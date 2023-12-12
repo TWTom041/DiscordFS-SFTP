@@ -9,7 +9,7 @@ from hashlib import md5
 from zlib import crc32
 
 
-chunk_size = 1 * 1024 * 1024  # MB
+chunk_size = 24 * 1024 * 1024  # MB
 client = MongoClient("mongodb://localhost:27017/")
 
 db = client["dsdrive"]
@@ -33,11 +33,11 @@ def makedirs(paths):
         fs = db["tree"].find_one({"name": i, "parent": parent_id, "type": "folder"})
         path_now = os.path.join(parent_id, i)
         if fs:
-            parent_id = fs["id"]
+            parent_id = fs["_id"]
         else:
-            id = md5(path_now.encode()).hexdigest() + "-" + crc32(path_now.encode()).to_bytes(4, "big").hex()
-            db["tree"].insert_one({"name": i, "parent": parent_id, "type": "folder", "id": id, "serial": 0})
-            parent_id = id            
+            hashes = md5(path_now.encode()).hexdigest() + "-" + crc32(path_now.encode()).to_bytes(4, "big").hex()
+            o = db["tree"].insert_one({"name": i, "parent": parent_id, "type": "folder", "hashes": hashes, "serial": 0})
+            parent_id = o.inserted_id          
     return parent_id
 
 
@@ -48,7 +48,7 @@ def finddirs(paths):
         fs = db["tree"].find_one({"name": i, "parent": parent_id, "type": "folder"})
         path_now = os.path.join(parent_id, i)
         if fs:
-            parent_id = fs["id"]
+            parent_id = fs["_id"]
             continue
         else:
             return None
@@ -73,11 +73,11 @@ def send_file(hook, path):
                     if finder:
                         if finder["type"] == "file":
                             print(resp.json())
-                            db["tree"].update_one({"id": finder["id"]}, {"$set": {"url": resp.json()["attachments"][0]["url"]}})
+                            db["tree"].update_one({"_id": finder["_id"]}, {"$set": {"url": resp.json()["attachments"][0]["url"]}})
                         else:
                             print("File already exists, and is a folder, skipping")
                     else:
-                        db["tree"].insert_one({"name": paths[-1], "type": "file", "id": fname, "url": resp.json()["attachments"][0]["url"], "parent": parent_id, "serial": serial})
+                        db["tree"].insert_one({"name": paths[-1], "type": "file", "hashes": fname, "url": resp.json()["attachments"][0]["url"], "parent": parent_id, "serial": serial})
                 except Exception as e:
                     print("Error sending file")
                     print(e)
@@ -132,14 +132,10 @@ with open("webhooks.txt", "r") as file:
 
 hook = HookIter(webhook_urls)
 
-# send_file(hook, "test/testfile.txt")
-# urls = get_files_url("test/testfile.txt")
-# download_file(urls, "test/testfile2.txt")
-print(db["tree"].find({"name": "test", "parent": "/", "type": "file"}).explain()["executionStats"])
+send_file(hook, "test/test_3mb.mp4")
+urls = get_files_url("test/test_3mb.mp4")
+download_file(urls, "test/test_3mb2.mp4")
 
 print(list(list_dir("test")))
 
 
-
-        
-    
