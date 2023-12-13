@@ -7,6 +7,7 @@ import fs.errors
 class DiscordFS(fs.base.FS):
     def __init__(self) -> None:
         self.dsdrive_api = None
+        self._lock = fs.base.threading.RLock()
 
     def getinfo(self, path, namespaces=None):
         # type: (Text, Optional[Collection[Text]]) -> Info
@@ -27,7 +28,7 @@ class DiscordFS(fs.base.FS):
         For more information regarding resource information, see :ref:`info`.
 
         """
-        stat, info = self.dsdrive_api.getinfo(path)
+        stat, info = self.dsdrive_api.get_info(path)
         if stat == 1:
             raise fs.errors.ResourceNotFound(path)
         return info
@@ -86,8 +87,7 @@ class DiscordFS(fs.base.FS):
             fs.errors.ResourceNotFound: If the path is not found.
 
         """
-        paths = os.path.normpath(path).split(os.sep)
-        paths = list(filter(None, paths))
+        paths = self.dsdrive_api.path_splitter(path)
         parent_id = self.dsdrive_api.makedirs(paths, allow_many=False)
         if parent_id == 1:
             raise fs.errors.ResourceNotFound(path)
@@ -129,6 +129,21 @@ class DiscordFS(fs.base.FS):
                 ancestor of ``path`` does not exist.
 
         """
+        if all(i not in mode for i in ("r", "w", "a", "x")):
+            raise ValueError("Must be a valid non-text mode")
+        paths = self.dsdrive_api.path_splitter(path)
+        fn = self.dsdrive_api.find(paths, return_obj=True)
+        if fn is not None:
+            if fn["type"] == "folder":
+                raise fs.errors.FileExpected(path)
+        
+            if "x" in mode:
+                raise fs.errors.FileExists(path)
+        else:
+            if mode == "r":
+                if fn is None:
+                    raise fs.errors.ResourceNotFound((path, mode))           
+        
         return self.dsdrive_api.open_binary(path, mode)
 
     def remove(self, path):
@@ -204,7 +219,7 @@ class DiscordFS(fs.base.FS):
 
         """
 
-        stat = self.dsdrive_api.setinfo(path, info)
+        stat = self.dsdrive_api.set_info(path, info)
         if stat == 1:
             raise fs.errors.ResourceNotFound(path)
         
@@ -216,6 +231,18 @@ if __name__ == "__main__":
     hook = HookIter(webhook_urls)
     dsdriveapi = DSdriveApi("mongodb://localhost:27017/", hook)
 
-    discord_fs = DiscordFS()
-    discord_fs.dsdrive_api = dsdriveapi
-    print(discord_fs.listdir("test"))
+    # discord_fs = DiscordFS()
+    # discord_fs.dsdrive_api = dsdriveapi
+    # print(discord_fs.listdir("test"))
+    import unittest
+    from fs.test import FSTestCases
+    
+    class TestMyFS(FSTestCases, unittest.TestCase):
+
+        def make_fs(self):
+            dsdriveapi.db.drop_collection("tree")
+            # Return an instance of your FS object here
+            discord_fs = DiscordFS()
+            discord_fs.dsdrive_api = dsdriveapi
+            return discord_fs
+    unittest.main()
