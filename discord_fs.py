@@ -1,6 +1,8 @@
 import fs
 from dsdrive_api import DSdriveApi, HookIter
 import os
+import fs.base
+import fs.errors
 
 class DiscordFS(fs.base.FS):
     def __init__(self) -> None:
@@ -25,6 +27,10 @@ class DiscordFS(fs.base.FS):
         For more information regarding resource information, see :ref:`info`.
 
         """
+        stat, info = self.dsdrive_api.getinfo(path)
+        if stat == 1:
+            raise fs.errors.ResourceNotFound(path)
+        return info
 
     def listdir(self, path):
         # type: (Text) -> List[Text]
@@ -123,6 +129,7 @@ class DiscordFS(fs.base.FS):
                 ancestor of ``path`` does not exist.
 
         """
+        return self.dsdrive_api.open_binary(path, mode)
 
     def remove(self, path):
         # type: (Text) -> None
@@ -197,11 +204,18 @@ class DiscordFS(fs.base.FS):
 
         """
 
-with open("webhooks.txt", "r") as file:
-    webhook_urls = [i for i in file.read().split("\n") if i]
+        stat = self.dsdrive_api.setinfo(path, info)
+        if stat == 1:
+            raise fs.errors.ResourceNotFound(path)
+        
 
-hook = HookIter(webhook_urls)
-dsdriveapi = DSdriveApi("mongodb://localhost:27017/", hook)
+if __name__ == "__main__":
+    with open("webhooks.txt", "r") as file:
+        webhook_urls = [i for i in file.read().split("\n") if i]
 
-discord_fs = DiscordFS()
-discord_fs.dsdrive_api = dsdriveapi
+    hook = HookIter(webhook_urls)
+    dsdriveapi = DSdriveApi("mongodb://localhost:27017/", hook)
+
+    discord_fs = DiscordFS()
+    discord_fs.dsdrive_api = dsdriveapi
+    print(discord_fs.listdir("test"))
