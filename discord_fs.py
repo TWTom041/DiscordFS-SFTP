@@ -3,10 +3,12 @@ from dsdrive_api import DSdriveApi, HookIter
 import os
 import fs.base
 import fs.errors
+import fs.info
+import string
 
 class DiscordFS(fs.base.FS):
     def __init__(self) -> None:
-        self.dsdrive_api = None
+        self.dsdrive_api: DSdriveApi = None
         self._lock = fs.base.threading.RLock()
 
     def getinfo(self, path, namespaces=None):
@@ -31,7 +33,7 @@ class DiscordFS(fs.base.FS):
         stat, info = self.dsdrive_api.get_info(path)
         if stat == 1:
             raise fs.errors.ResourceNotFound(path)
-        return info
+        return fs.info.Info(info)
 
     def listdir(self, path):
         # type: (Text) -> List[Text]
@@ -52,7 +54,7 @@ class DiscordFS(fs.base.FS):
             fs.errors.ResourceNotFound: If ``path`` does not exist.
 
         """
-        stat, objs = list(self.dsdrive_api.list_dir("test"))
+        stat, objs = list(self.dsdrive_api.list_dir(path))
         if not stat:
             if objs == 1:
                 raise fs.errors.ResourceNotFound(path)
@@ -88,7 +90,7 @@ class DiscordFS(fs.base.FS):
 
         """
         paths = self.dsdrive_api.path_splitter(path)
-        parent_id = self.dsdrive_api.makedirs(paths, allow_many=False)
+        parent_id = self.dsdrive_api.makedirs(paths, allow_many=False, exist_ok=recreate)
         if parent_id == 1:
             raise fs.errors.ResourceNotFound(path)
         elif parent_id == 2:
@@ -131,18 +133,23 @@ class DiscordFS(fs.base.FS):
         """
         if all(i not in mode for i in ("r", "w", "a", "x")):
             raise ValueError("Must be a valid non-text mode")
+        if not path.isprintable():
+            raise fs.errors.InvalidCharsInPath(path)
         paths = self.dsdrive_api.path_splitter(path)
-        fn = self.dsdrive_api.find(paths, return_obj=True)
-        if fn is not None:
+        stat, fn = self.dsdrive_api.find(paths, return_obj=True)
+        if stat == 0:
             if fn["type"] == "folder":
                 raise fs.errors.FileExpected(path)
         
             if "x" in mode:
                 raise fs.errors.FileExists(path)
         else:
-            if mode == "r":
-                if fn is None:
+            if stat == 1:
+                if not ("w" in mode or "a" in mode or "x" in mode):
                     raise fs.errors.ResourceNotFound((path, mode))           
+            elif stat == 2:
+                raise fs.errors.ResourceNotFound((path, mode))
+
         
         return self.dsdrive_api.open_binary(path, mode)
 
@@ -225,10 +232,12 @@ class DiscordFS(fs.base.FS):
         
 
 if __name__ == "__main__":
+    fulltest = True
     with open("webhooks.txt", "r") as file:
         webhook_urls = [i for i in file.read().split("\n") if i]
 
     hook = HookIter(webhook_urls)
+
     dsdriveapi = DSdriveApi("mongodb://localhost:27017/", hook)
 
     # discord_fs = DiscordFS()
@@ -240,9 +249,12 @@ if __name__ == "__main__":
     class TestMyFS(FSTestCases, unittest.TestCase):
 
         def make_fs(self):
-            dsdriveapi.db.drop_collection("tree")
+            dsdriveapi.clear()
             # Return an instance of your FS object here
             discord_fs = DiscordFS()
             discord_fs.dsdrive_api = dsdriveapi
             return discord_fs
-    unittest.main()
+    if fulltest:
+        unittest.main()
+    
+
