@@ -44,7 +44,7 @@ class DSFile(BytesIO):
             self.dsdrive.download_file(self.path, self)
             self._write = False
             self.seek(0)
-        if "w" in mode or "x" in mode:
+        if "w" in mode or "x" in mode or "a" in mode:
             self._write = True
 
     def readable(self) -> bool:
@@ -128,6 +128,8 @@ class DSdriveApi:
     def path_splitter(self, path):
         paths = os.path.normpath(path).split(os.sep)
         paths = list(filter(None, paths))
+        paths = list(filter(lambda x: x != ".", paths))
+        # print(paths)
         return paths
 
     def makedirs(self, paths, allow_many=False, exist_ok=False):
@@ -139,8 +141,9 @@ class DSdriveApi:
             )
             if fs:
                 parent_id = fs["_id"]
+                counter += 1
             else:
-                if not allow_many and counter > 0:
+                if not allow_many and len(paths) - counter > 1:
                     return 1  # Only one directory allowed, resource not found
                 o = self.db["tree"].insert_one(
                     {
@@ -174,7 +177,6 @@ class DSdriveApi:
                     }
                 )
                 parent_id = o.inserted_id
-                counter += 1
         if (not exist_ok) and counter == 0:
             return 2  # No directories created, already exists
         return parent_id
@@ -191,6 +193,9 @@ class DSdriveApi:
                 if j == 1:
                     return 1, None  # Path not found, but at the end
                 return 2, None  # Path not found, and not at the end
+        if paths == []:  # Root directory
+            fs = self.db["tree"].find_one({"_id": self.root_id})
+            parent_id = self.root_id
         if return_obj:
             return 0, fs
         return 0, parent_id
@@ -294,7 +299,7 @@ class DSdriveApi:
         paths = self.path_splitter(path)
 
         stat, parent_id = self.find(paths[:-1])
-        if not parent_id:
+        if stat != 0:
             return None
         fn = (
             self.db["tree"]
@@ -302,7 +307,9 @@ class DSdriveApi:
             .sort("serial", pymongo.ASCENDING)
         )
         if fn:
-            return [i["url"] for i in fn]
+            urls = [i["url"] for i in fn]
+            # print(urls)
+            return urls
         else:
             return None
 
@@ -310,7 +317,7 @@ class DSdriveApi:
         if path_dst is None:
             path_dst = path_src
         urls = self.get_file_urls(path_src)
-        print(urls)
+        # print(urls)
         if isinstance(path_dst, str):
             if not os.path.exists(path_dst):
                 with open(path_dst, "x") as file:
@@ -329,7 +336,7 @@ class DSdriveApi:
         if paths == []:  # Root directory
             return True, self.db["tree"].find({"parent": self.root_id, "serial": 0})
         stat, parent = self.find(paths, return_obj=True)
-        if not parent:
+        if stat != 0:
             return None, 1  # Path not found
         if parent["type"] == "file":
             return None, 2  # Path is a file
@@ -340,7 +347,7 @@ class DSdriveApi:
     def remove_file(self, path):
         paths = self.path_splitter(path)
         stat, parent_id = self.find(paths[:-1])
-        if not parent_id:
+        if stat != 0:
             return 1  # Path not found
         fn = self.db["tree"].find(
             {"name": paths[-1], "parent": parent_id, "type": "file"}
@@ -357,7 +364,7 @@ class DSdriveApi:
         if len(paths) == 0:
             return 4  # Root directory cannot be deleted
         stat, parent_id = self.find(paths[:-1])
-        if not parent_id:
+        if stat != 0:
             return 1  # Path not found
         fn = self.db["tree"].find_one(
             {"name": paths[-1], "parent": parent_id, "serial": 0}
@@ -376,7 +383,7 @@ class DSdriveApi:
         if len(paths) == 0:
             return 4  # Root directory cannot be deleted
         stat, parent_id = self.find(paths[:-1])
-        if not parent_id:
+        if stat != 0:
             return 1
         fn = self.db["tree"].find_one(
             {"name": paths[-1], "parent": parent_id, "serial": 0}
@@ -393,7 +400,7 @@ class DSdriveApi:
             }
 
         stat, fn = self.find(paths, return_obj=True)
-        if not fn:
+        if stat != 0:
             return 1, None  # Path not found
         raw_info = {
             "access": fn["access"],
@@ -411,7 +418,7 @@ class DSdriveApi:
             fn = self.db["tree"].find_one({"_id": self.root_id})
         else:
             stat, parent_id = self.find(paths[:-1])
-            if not parent_id:
+            if stat != 0:
                 return 1
 
             fn = self.db["tree"].find_one(

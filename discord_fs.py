@@ -30,6 +30,7 @@ class DiscordFS(fs.base.FS):
         For more information regarding resource information, see :ref:`info`.
 
         """
+        self.check()
         stat, info = self.dsdrive_api.get_info(path)
         if stat == 1:
             raise fs.errors.ResourceNotFound(path)
@@ -54,6 +55,7 @@ class DiscordFS(fs.base.FS):
             fs.errors.ResourceNotFound: If ``path`` does not exist.
 
         """
+        self.check()
         stat, objs = list(self.dsdrive_api.list_dir(path))
         if not stat:
             if objs == 1:
@@ -89,6 +91,7 @@ class DiscordFS(fs.base.FS):
             fs.errors.ResourceNotFound: If the path is not found.
 
         """
+        self.check()
         paths = self.dsdrive_api.path_splitter(path)
         parent_id = self.dsdrive_api.makedirs(paths, allow_many=False, exist_ok=recreate)
         if parent_id == 1:
@@ -131,6 +134,7 @@ class DiscordFS(fs.base.FS):
                 ancestor of ``path`` does not exist.
 
         """
+        self.check()
         if all(i not in mode for i in ("r", "w", "a", "x")):
             raise ValueError("Must be a valid non-text mode")
         if not path.isprintable():
@@ -165,6 +169,7 @@ class DiscordFS(fs.base.FS):
             fs.errors.ResourceNotFound: If the path does not exist.
 
         """
+        self.check()
         stat = self.dsdrive_api.remove_file(path)
         if stat == 1:
             raise fs.errors.ResourceNotFound(path)
@@ -190,6 +195,7 @@ class DiscordFS(fs.base.FS):
                 the root directory (i.e. ``'/'``)
 
         """
+        self.check()
         stat = self.dsdrive_api.remove_dir(path)
         if stat == 1:
             raise fs.errors.ResourceNotFound(path)
@@ -225,6 +231,7 @@ class DiscordFS(fs.base.FS):
             >>> my_fs.setinfo('file.txt', details_info)
 
         """
+        self.check()
 
         stat = self.dsdrive_api.set_info(path, info)
         if stat == 1:
