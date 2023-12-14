@@ -15,11 +15,7 @@ import array
 chunk_size = 24 * 1024 * 1024  # MB
 
 
-# webhook = SyncWebhook.from_url(webhook_url)
-# webhook.send("Hello World")
-
-
-class HookIter:
+class HookTool:
     def __init__(self, hooks):
         self.hooks = hooks
         self.index = 0
@@ -27,6 +23,33 @@ class HookIter:
     def get_hook(self):
         self.index += 1
         return self.hooks[self.index % len(self.hooks)]
+    
+    def send(self, *args, **kwargs):
+        resp = requests.post(self.get_hook(), *args, **kwargs)
+        if resp.status_code != 200:
+            msg_json = resp.json()
+            if resp.status_code == 429:
+                retry_after = msg_json["retry_after"]
+                time.sleep(retry_after + 0.1)
+                return self.send(*args, **kwargs)
+            else:
+                raise Exception(f"Error sending data : {resp.text}")
+        return resp
+    
+    def get(self, *args, **kwargs):
+        resp = requests.get(*args, **kwargs)
+        if resp.status_code != 200:
+            msg_json = resp.json()
+            if resp.status_code == 429:
+                retry_after = msg_json["retry_after"]
+                time.sleep(retry_after + 0.1)
+                return self.get(*args, **kwargs)
+            else:
+                raise Exception(f"Error sending data : {resp.text}")
+        if len(resp.content) == 0:
+            time.sleep(0.1)
+            return self.get(*args, **kwargs)
+        return resp
 
 
 class DSFile(BytesIO):
@@ -42,7 +65,8 @@ class DSFile(BytesIO):
             self._read = True
             self._write = True
             self.dsdrive.download_file(self.path, self)
-            self._write = False
+            if "+" not in mode:
+                self._write = False
             self.seek(0)
         if "w" in mode or "x" in mode or "a" in mode:
             self._write = True
@@ -65,7 +89,7 @@ class DSFile(BytesIO):
 
     def close(self):
         if self._write:
-            print("Sending file", self.path)
+            # print("Sending file", self.path)
             # Update the URL in the database when the BytesIO is closed
             self.seek(0)
             self._read = True
@@ -79,7 +103,7 @@ class DSdriveApi:
     def __init__(self, url, hook) -> None:
         client = MongoClient(url)
         self.db = client["dsdrive"]
-        self.hook = hook
+        self.hook: HookTool = hook
         root = self.db["tree"].find_one({"name": "", "parent": None})
         if not root:
             root = self.db["tree"].insert_one(
@@ -87,7 +111,6 @@ class DSdriveApi:
                     "name": "",
                     "parent": None,
                     "type": "folder",
-                    "serial": 0,
                     "access": {
                         "group": "staff",
                         "permissions": [
@@ -134,23 +157,23 @@ class DSdriveApi:
 
     def makedirs(self, paths, allow_many=False, exist_ok=False):
         parent_id = self.root_id
-        counter = 0
+        already_exist_counter = 0
+        resource_not_found_counter = 0
         for i in paths:
             fs = self.db["tree"].find_one(
                 {"name": i, "parent": parent_id, "type": "folder"}
             )
             if fs:
                 parent_id = fs["_id"]
-                counter += 1
+                resource_not_found_counter += 1
             else:
-                if not allow_many and len(paths) - counter > 1:
+                if not allow_many and len(paths) - resource_not_found_counter > 1:
                     return 1  # Only one directory allowed, resource not found
                 o = self.db["tree"].insert_one(
                     {
                         "name": i,
                         "parent": parent_id,
                         "type": "folder",
-                        "serial": 0,
                         "access": {
                             "group": "staff",
                             "permissions": [
@@ -177,7 +200,8 @@ class DSdriveApi:
                     }
                 )
                 parent_id = o.inserted_id
-        if (not exist_ok) and counter == 0:
+                already_exist_counter += 1
+        if (not exist_ok) and already_exist_counter == 0:
             return 2  # No directories created, already exists
         return parent_id
 
@@ -185,7 +209,7 @@ class DSdriveApi:
         # paths = os.path.normpath(path).split(os.sep)
         parent_id = self.root_id
         for i, j in zip(paths, range(len(paths), 0, -1)):
-            fs = self.db["tree"].find_one({"name": i, "parent": parent_id, "serial": 0})
+            fs = self.db["tree"].find_one({"name": i, "parent": parent_id})
             if fs:
                 parent_id = fs["_id"]
                 continue
@@ -221,93 +245,96 @@ class DSdriveApi:
         
         paths = self.path_splitter(path)
         parent_id = self.makedirs(paths[:-1], allow_many=True, exist_ok=True)
+        urls = []
+        chunk_sizes = []
+
         while chunk or serial == 0:
             with BytesIO(chunk) as buffer:
                 fname = (
                     md5(chunk).hexdigest() + "-" + crc32(chunk).to_bytes(4, "big").hex()
                 )
-                resp = requests.post(
-                    self.hook.get_hook(), files={"file": (fname, buffer)}
+                resp = self.hook.send(
+                    files={"file": (fname, buffer)}
                 )
-                try:
-                    # dirname = os.path.dirname(path)
-
-                    finder = self.db["tree"].find_one(
-                        {"name": paths[-1], "parent": parent_id, "serial": serial}
-                    )
-                    if finder:
-                        if finder["type"] == "file":
-                            print(resp.json())
-                            self.db["tree"].update_one(
-                                {"_id": finder["_id"]},
-                                {"$set": {"url": resp.json()["attachments"][0]["url"]}},
-                            )
-                        else:
-                            print("File already exists, and is a folder, skipping")
-                    else:
-                        info = {
-                            "name": paths[-1],
-                            "type": "file",
-                            "hashes": fname,
-                            "url": resp.json()["attachments"][0]["url"],
-                            "parent": parent_id,
-                            "chunk_size": len(chunk),
-                            "serial": serial,
-                        }
-                        if serial == 0:
-                            info["access"] = {
-                                "group": "staff",
-                                "permissions": [
-                                    "g_r",
-                                    "g_w",
-                                    "g_x",
-                                    "u_r",
-                                    "u_w",
-                                    "u_x",
-                                    "o_r",
-                                    "o_w",
-                                    "o_x",
-                                ],
-                                "user": "root",
-                            }
-                            info["details"] = {
-                                "accessed": time.time(),
-                                "created": time.time(),
-                                "metadata_changed": time.time(),
-                                "modified": time.time(),
-                                "size": size,
-                                "type": 2,  # File
-                            }
-                        self.db["tree"].insert_one(info)
-                except Exception as e:
-                    print("Error sending file")
-                    print(e)
-                    print(resp.text)
-
-            serial += 1
+                urls.append(resp.json()["attachments"][0]["url"])
+                chunk_sizes.append(len(chunk))
+                
             chunk = file.read(chunk_size)
+            serial += 1
+        try:
+            # dirname = os.path.dirname(path)
 
-        # clear all the things that are greater than serial
-        self.db["tree"].delete_many({"parent": parent_id, "serial": {"$gte": serial}})
+            finder = self.db["tree"].find_one(
+                {"name": paths[-1], "parent": parent_id}
+            )
+            if finder:
+                if finder["type"] == "file":
+                    # print(resp.json())
+                    self.db["tree"].update_one(
+                        {"_id": finder["_id"]},
+                        {"$set": {"urls": urls, "chunk_sizes": chunk_sizes}},
+                    )
+                else:
+                    print("File already exists, and is a folder, skipping")
+            else:
+                info = {
+                    "name": paths[-1],
+                    "type": "file",
+                    # "hashes": fname,
+                    "urls": urls,
+                    "parent": parent_id,
+                    "chunk_sizes": chunk_sizes,
+                }
+                info["access"] = {
+                    "group": "staff",
+                    "permissions": [
+                        "g_r",
+                        "g_w",
+                        "g_x",
+                        "u_r",
+                        "u_w",
+                        "u_x",
+                        "o_r",
+                        "o_w",
+                        "o_x",
+                    ],
+                    "user": "root",
+                }
+                info["details"] = {
+                    "accessed": time.time(),
+                    "created": time.time(),
+                    "metadata_changed": time.time(),
+                    "modified": time.time(),
+                    "size": size,
+                    "type": 2,  # File
+                }
+                self.db["tree"].insert_one(info)
+        except Exception as e:
+            print("Error sending file")
+            print(e)
+            print(resp.text)
+
         if file_obj is None:
             file.close()
 
     def open_binary(self, path, mode):
+        # check if the file size is 0
+        stat, fn = self.find(self.path_splitter(path), return_obj=True)
+        if stat == 0:
+            if fn["type"] == "folder":
+                raise OSError("Path is a folder")
+            if fn["details"]["size"] == 0:
+                return DSFile([], path, self, mode)
         return DSFile(self.get_file_urls(path), path, self, mode)
 
     def get_file_urls(self, path):
         paths = self.path_splitter(path)
 
-        stat, parent_id = self.find(paths[:-1])
+        stat, fn = self.find(paths, return_obj=True)
         if stat != 0:
             return None
-        fn = (
-            self.db["tree"]
-            .find({"name": paths[-1], "parent": parent_id, "type": "file"})
-            .sort("serial", pymongo.ASCENDING)
-        )
         if fn:
-            urls = [i["url"] for i in fn]
+            urls = fn["urls"]
             # print(urls)
             return urls
         else:
@@ -324,39 +351,34 @@ class DSdriveApi:
                     pass
             with open(path_dst, "wb") as file:
                 for i, url in enumerate(urls):
-                    resp = requests.get(url)
+                    resp = self.hook.get(url)
                     file.write(resp.content)
         elif isinstance(path_dst, BytesIO) or isinstance(path_dst, DSFile):
             for i, url in enumerate(urls):
-                resp = requests.get(url)
+                resp = self.hook.get(url)
                 path_dst.write(resp.content)
 
     def list_dir(self, path):
         paths = self.path_splitter(path)
         if paths == []:  # Root directory
-            return True, self.db["tree"].find({"parent": self.root_id, "serial": 0})
+            return True, self.db["tree"].find({"parent": self.root_id})
         stat, parent = self.find(paths, return_obj=True)
         if stat != 0:
             return None, 1  # Path not found
         if parent["type"] == "file":
             return None, 2  # Path is a file
 
-        fn = self.db["tree"].find({"parent": parent["_id"], "serial": 0})
+        fn = self.db["tree"].find({"parent": parent["_id"]})
         return True, fn
 
     def remove_file(self, path):
         paths = self.path_splitter(path)
-        stat, parent_id = self.find(paths[:-1])
+        stat, fn = self.find(paths, return_obj=True)
         if stat != 0:
             return 1  # Path not found
-        fn = self.db["tree"].find(
-            {"name": paths[-1], "parent": parent_id, "type": "file"}
-        )
-        if not fn:
-            return 2  # File not found
-        self.db["tree"].delete_many(
-            {"name": paths[-1], "parent": parent_id, "type": "file"}
-        )
+        if fn["type"] != "file":
+            return 2  # Path is not a file
+        self.db["tree"].delete_one({"_id": fn["_id"]})
         return 0
 
     def remove_dir(self, path):
@@ -367,7 +389,7 @@ class DSdriveApi:
         if stat != 0:
             return 1  # Path not found
         fn = self.db["tree"].find_one(
-            {"name": paths[-1], "parent": parent_id, "serial": 0}
+            {"name": paths[-1], "parent": parent_id}
         )
         if not fn:
             return 1  # Path not found
@@ -386,7 +408,7 @@ class DSdriveApi:
         if stat != 0:
             return 1
         fn = self.db["tree"].find_one(
-            {"name": paths[-1], "parent": parent_id, "serial": 0}
+            {"name": paths[-1], "parent": parent_id}
         )
 
     def get_info(self, path):
@@ -395,7 +417,7 @@ class DSdriveApi:
             fn = self.db["tree"].find_one({"_id": self.root_id})
             return 0, {
                 "access": fn["access"],
-                "basic": {"is_dir": True, "name": fn["name"]},
+                "basic": {"name": fn["name"], "is_dir": True},
                 "details": fn["details"],
             }
 
@@ -405,8 +427,8 @@ class DSdriveApi:
         raw_info = {
             "access": fn["access"],
             "basic": {
-                "is_dir": True if fn["type"] == "folder" else False,
                 "name": fn["name"],
+                "is_dir": True if fn["type"] == "folder" else False,
             },
             "details": fn["details"],
         }
@@ -422,7 +444,7 @@ class DSdriveApi:
                 return 1
 
             fn = self.db["tree"].find_one(
-                {"name": paths[-1], "parent": parent_id, "serial": 0}
+                {"name": paths[-1], "parent": parent_id}
             )
             if not fn:
                 return 1
@@ -457,12 +479,14 @@ if __name__ == "__main__":
     with open("webhooks.txt", "r") as file:
         webhook_urls = [i for i in file.read().split("\n") if i]
 
-    hook = HookIter(webhook_urls)
+    hook = HookTool(webhook_urls)
     dsdrive_api = DSdriveApi("mongodb://localhost:27017/", hook)
     a = dsdrive_api.open_binary("test/aaa.txt", "w")
     a.write(b"hello world")
     a.seek(0)
+    a._read = True
     print(a.read())
+    a._read = False
     a.close()
 
     # dsdrive_api.send_file("test/test_3mb.mp4")

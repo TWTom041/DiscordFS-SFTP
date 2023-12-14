@@ -1,5 +1,5 @@
 import fs
-from dsdrive_api import DSdriveApi, HookIter
+from dsdrive_api import DSdriveApi, HookTool
 import os
 import fs.base
 import fs.errors
@@ -243,7 +243,7 @@ if __name__ == "__main__":
     with open("webhooks.txt", "r") as file:
         webhook_urls = [i for i in file.read().split("\n") if i]
 
-    hook = HookIter(webhook_urls)
+    hook = HookTool(webhook_urls)
 
     dsdriveapi = DSdriveApi("mongodb://localhost:27017/", hook)
 
@@ -263,5 +263,14 @@ if __name__ == "__main__":
             return discord_fs
     if fulltest:
         unittest.main()
+    else:
+        from io import BytesIO
+        temp_test = TestMyFS()
+        dsfs = temp_test.make_fs()
+        bytes_file = BytesIO(b"bar")
+        dsfs.upload("foo", bytes_file)
+
+        with dsfs.open("foo", "rb") as file:
+            print(file.read())
     
 
