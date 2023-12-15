@@ -151,6 +151,7 @@ class DSdriveApi:
 
     def path_splitter(self, path):
         paths = fs.path.relpath(fs.path.normpath(path)).split("/")
+        paths = list(filter(None, paths))
         return paths
 
     def makedirs(self, paths, allow_many=False, exist_ok=False):

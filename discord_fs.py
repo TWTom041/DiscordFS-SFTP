@@ -36,8 +36,8 @@ class DiscordFS(fs.base.FS):
             raise fs.errors.ResourceNotFound(path)
         return fs.info.Info(info)
 
-    def listdir(self, path):
-        # type: (Text) -> List[Text]
+    def listdir(self, path, *a, **k):
+        # # type: (Text) -> List[Text]
         """Get a list of the resource names in a directory.
 
         This method will return a list of the resources in a directory.
