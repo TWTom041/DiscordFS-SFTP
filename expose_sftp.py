@@ -13,6 +13,17 @@ from fs.errors import *
 from io import StringIO
 from functools import wraps
 
+from discord_fs import DiscordFS
+from dsdrive_api import DSdriveApi, HookTool
+
+
+with open("webhooks.txt", "r") as file:
+    _webhook_urls = [i for i in file.read().split("\n") if i]
+    _hook = HookTool(_webhook_urls)
+
+FSFactory = DiscordFS  # can be replaced with whatever FS class
+dsdriveapi = DSdriveApi("mongodb://localhost:27017/", _hook)
+
 
 # Default host key used by BaseSFTPServer
 #
@@ -33,6 +44,33 @@ DEFAULT_HOST_KEY = paramiko.RSAKey.from_private_key(StringIO(
     "4bwvYtUGufMIHiNeWP66i6fYCucXCMYtx6Xgu2hpdZZpFw==\n" \
     "-----END RSA PRIVATE KEY-----\n"
 ))
+
+
+def flags_to_mode(flags, binary=True):
+    """Convert an os.O_* flag bitmask into an FS mode string."""
+    if flags & os.O_WRONLY:
+        if flags & os.O_TRUNC:
+            mode = "w"
+        elif flags & os.O_APPEND:
+            mode = "a"
+        else:
+            mode = "r+"
+    elif flags & os.O_RDWR:
+        if flags & os.O_TRUNC:
+            mode = "w+"
+        elif flags & os.O_APPEND:
+            mode = "a+"
+        else:
+            mode = "r+"
+    else:
+        mode = "r"
+    if flags & os.O_EXCL:
+        mode += "x"
+    if binary:
+        mode += 'b'
+    else:
+        mode += 't'
+    return mode
 
 
 def report_sftp_errors(func):
@@ -83,12 +121,18 @@ class SFTPServerInterface(paramiko.SFTPServerInterface):
         self.fs.close()
         self.fs = None
 
+    def renew(self):
+        if self.fs is None or self.fs.isclosed():
+            self.fs = self.fs.get_new_fs()
+
     @report_sftp_errors
     def open(self, path, flags, attr):
+        self.renew()
         return SFTPHandle(self, path, flags)
 
     @report_sftp_errors
     def list_folder(self, path):
+        self.renew()
         if not isinstance(path, str):
             path = path.decode(self.encoding)
         stats = []
@@ -101,6 +145,7 @@ class SFTPServerInterface(paramiko.SFTPServerInterface):
 
     @report_sftp_errors
     def stat(self, path):
+        self.renew()
         if not isinstance(path, str):
             path = path.decode(self.encoding)
 
@@ -135,6 +180,7 @@ class SFTPServerInterface(paramiko.SFTPServerInterface):
 
     @report_sftp_errors
     def remove(self, path):
+        self.renew()
         if not isinstance(path, str):
             path = path.decode(self.encoding)
         self.fs.remove(path)
@@ -142,6 +188,7 @@ class SFTPServerInterface(paramiko.SFTPServerInterface):
 
     @report_sftp_errors
     def rename(self, oldpath, newpath):
+        self.renew()
         if not isinstance(oldpath, str):
             oldpath = oldpath.decode(self.encoding)
         if not isinstance(newpath, str):
@@ -149,18 +196,23 @@ class SFTPServerInterface(paramiko.SFTPServerInterface):
         if self.fs.isfile(oldpath):
             self.fs.move(oldpath, newpath)
         else:
-            self.fs.movedir(oldpath, newpath)
+            self.fs.movedir(oldpath, newpath, create=True)
         return paramiko.SFTP_OK
 
     @report_sftp_errors
     def mkdir(self, path, attr):
-        if not isinstance(path, str):
-            path = path.decode(self.encoding)
-        self.fs.makedir(path)
+        self.renew()
+        try:
+            if not isinstance(path, str):
+                path = path.decode(self.encoding)
+            self.fs.makedir(path)
+        except:
+            print(traceback.format_exc())
         return paramiko.SFTP_OK
 
     @report_sftp_errors
     def rmdir(self, path):
+        self.renew()
         if not isinstance(path, str):
             path = path.decode(self.encoding)
         self.fs.removedir(path)
@@ -169,13 +221,14 @@ class SFTPServerInterface(paramiko.SFTPServerInterface):
     def canonicalize(self, path):
         try:
             return abspath(normpath(path)).encode(self.encoding)
-        except BackReference:
+        except IllegalBackReference:
             # If the client tries to use backrefs to escape root, gently
             # nudge them back to /.
             return '/'
 
     @report_sftp_errors
     def chattr(self, path, attr):
+        self.renew()
         #  f.truncate() is implemented by setting the size attr.
         #  Any other attr requests fail out.
         if attr._flags:
@@ -201,8 +254,8 @@ class SFTPHandle(paramiko.SFTPHandle):
 
     def __init__(self, owner, path, flags):
         super(SFTPHandle, self).__init__(flags)
-        print(flags)
-        mode = flags  # mode = flags_to_mode(flags)
+        
+        mode = flags_to_mode(flags)
         self.owner = owner
         if not isinstance(path, str):
             path = path.decode(self.owner.encoding)
@@ -307,7 +360,7 @@ class BaseSFTPServer(ThreadedTCPServer):
     allow_reuse_address = True
 
     def __init__(self, address, fs=None, encoding=None, host_key=None, RequestHandlerClass=None):
-        self.fs = fs
+        self.fs = fs  # if change fs, also change here
         self.encoding = encoding
         if host_key is None:
             host_key = DEFAULT_HOST_KEY
@@ -348,7 +401,7 @@ class BaseServerInterface(paramiko.ServerInterface):
         """Check whether the user can proceed without authentication."""
         return paramiko.AUTH_SUCCESSFUL
 
-    def check_auth_publickey(self, username,key):
+    def check_auth_publickey(self, username, key):
         """Check whether the given public key is valid for authentication."""
         return paramiko.AUTH_FAILED
 
@@ -356,7 +409,7 @@ class BaseServerInterface(paramiko.ServerInterface):
         """Check whether the given password is valid for authentication."""
         return paramiko.AUTH_FAILED
 
-    def get_allowed_auths(self,username):
+    def get_allowed_auths(self, username):
         """Return string containing a comma separated list of allowed auth modes.
 
         The available modes are  "node", "password" and "publickey".
@@ -366,25 +419,13 @@ class BaseServerInterface(paramiko.ServerInterface):
 
 #  When called from the command-line, expose a TempFS for testing purposes
 if __name__ == "__main__":
-    from discord_fs import DiscordFS
-    from dsdrive_api import DSdriveApi, HookTool
-
-    with open("webhooks.txt", "r") as file:
-        webhook_urls = [i for i in file.read().split("\n") if i]
-
-    hook = HookTool(webhook_urls)
-
-    dsdriveapi = DSdriveApi("mongodb://localhost:27017/", hook)
-
-    dsfs = DiscordFS()
-    dsfs.dsdrive_api = dsdriveapi
-
-    server = BaseSFTPServer(("localhost", 8022), dsfs)
+    dsfs = FSFactory(dsdrive_api=dsdriveapi)
+    server = BaseSFTPServer(("localhost", 8022), fs=dsfs)
     try:
         #import rpdb2; rpdb2.start_embedded_debugger('password')
         server.serve_forever()
     except (SystemExit, KeyboardInterrupt):
         server.server_close()
-    
     except:
         print(traceback.format_exc())
+

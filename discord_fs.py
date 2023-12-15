@@ -4,12 +4,17 @@ import os
 import fs.base
 import fs.errors
 import fs.info
+import fs.subfs
 import string
 
 class DiscordFS(fs.base.FS):
-    def __init__(self) -> None:
-        self.dsdrive_api: DSdriveApi = None
+    def __init__(self, dsdrive_api=None) -> None:
+        self.dsdrive_api: DSdriveApi = dsdrive_api
         self._lock = fs.base.threading.RLock()
+        self._meta = {"read_only": False}
+
+    def get_new_fs(self):
+        return DiscordFS(self.dsdrive_api)
 
     def getinfo(self, path, namespaces=None):
         # type: (Text, Optional[Collection[Text]]) -> Info
