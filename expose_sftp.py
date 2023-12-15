@@ -1,3 +1,34 @@
+LICENSE = """
+Copyright (c) 2009-2015, Will McGugan <will@willmcgugan.com> and contributors.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+    1. Redistributions of source code must retain the above copyright notice,
+       this list of conditions and the following disclaimer.
+
+    2. Redistributions in binary form must reproduce the above copyright
+       notice, this list of conditions and the following disclaimer in the
+       documentation and/or other materials provided with the distribution.
+
+    3. Neither the name of PyFilesystem nor the names of its contributors
+       may be used to endorse or promote products derived from this software
+       without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+"""
+# modified from https://github.com/PyFilesystem/pyfilesystem to make it support pyfilesystem2
+
 import os
 import stat as statinfo
 import time
@@ -5,16 +36,22 @@ import socketserver
 import threading
 import traceback
 import datetime
+from functools import wraps
 
 import paramiko
+import yaml
 
 from fs.path import *
 from fs.errors import *
 from io import StringIO
-from functools import wraps
 
 from discord_fs import DiscordFS
 from dsdrive_api import DSdriveApi, HookTool
+
+
+HOST = "127.0.0.1"
+PORT = 8022
+auths = []
 
 
 with open("webhooks.txt", "r") as file:
@@ -322,7 +359,10 @@ class SFTPRequestHandler(socketserver.BaseRequestHandler):
         """
         Start the paramiko server, this will start a thread to handle the connection.
         """
-        self.transport.start_server(server=BaseServerInterface())
+        interface = BaseServerInterface()
+        interface.set_auths(self.server.auths)
+        interface.noauth = self.server.noauth
+        self.transport.start_server(server=interface)
         # TODO: I like the code below _in theory_ but it does not work as I expected.
         # Figure out how to actually time out a new client if they fail to auth in a
         # certain amount of time.
@@ -359,9 +399,11 @@ class BaseSFTPServer(ThreadedTCPServer):
     # "port in use" error.
     allow_reuse_address = True
 
-    def __init__(self, address, fs=None, encoding=None, host_key=None, RequestHandlerClass=None):
+    def __init__(self, address, fs=None, encoding=None, host_key=None, RequestHandlerClass=None, auths=None, noauth=False):
         self.fs = fs  # if change fs, also change here
         self.encoding = encoding
+        self.auths = auths if auths is not None else []
+        self.noauth = noauth
         if host_key is None:
             host_key = DEFAULT_HOST_KEY
         self.host_key = host_key
@@ -392,6 +434,10 @@ class BaseServerInterface(paramiko.ServerInterface):
         * check_auth_publickey Check auth with a public key
     """
 
+    def set_auths(self, auths, noauth=False):
+        self.auths = auths
+        self.noauth = noauth
+
     def check_channel_request(self, kind, chanid):
         if kind == 'session':
             return paramiko.OPEN_SUCCEEDED
@@ -399,30 +445,74 @@ class BaseServerInterface(paramiko.ServerInterface):
 
     def check_auth_none(self, username):
         """Check whether the user can proceed without authentication."""
-        return paramiko.AUTH_SUCCESSFUL
+        if self.noauth:
+            return paramiko.AUTH_SUCCESSFUL
+        for auth in self.auths:
+            if auth["Username"] == username:
+                if auth.get("Password", False) is None:
+                    return paramiko.AUTH_SUCCESSFUL
+        return paramiko.AUTH_FAILED
 
     def check_auth_publickey(self, username, key):
         """Check whether the given public key is valid for authentication."""
+        # remove key comment
+        if self.noauth:
+            return paramiko.AUTH_SUCCESSFUL
+        
+        # key = " ".join(key.split()[:2])
+        # key = paramiko.PKey.from_private_key(StringIO(key))
+
+        for auth in self.auths:
+            if auth["Username"] == username:
+                auth_key = auth.get("PubKey", None)
+                if auth_key is not None and auth_key.split()[1] == key.get_base64():
+                    return paramiko.AUTH_SUCCESSFUL
         return paramiko.AUTH_FAILED
 
     def check_auth_password(self, username, password):
         """Check whether the given password is valid for authentication."""
+        if self.noauth:
+            return paramiko.AUTH_SUCCESSFUL
+        for auth in self.auths:
+            if auth["Username"] == username:
+                if auth.get("Password", None) == password:
+                    return paramiko.AUTH_SUCCESSFUL
         return paramiko.AUTH_FAILED
 
     def get_allowed_auths(self, username):
         """Return string containing a comma separated list of allowed auth modes.
 
-        The available modes are  "node", "password" and "publickey".
+        The available modes are  "none", "password" and "publickey".
         """
-        return "none"
+        methods = []
+        for auth in self.auths:
+            if auth["Username"] == username:
+                auth_key = auth.get("PubKey", None)
+                auth_password = auth.get("Password", False)
+                if auth_key is not None:
+                    methods.append("publickey")
+                if auth_password is None or self.noauth:
+                    methods.append("none")
+                else:
+                    if auth_password != False:
+                        methods.append("password")                
+        return ",".join(methods)
 
 
-#  When called from the command-line, expose a TempFS for testing purposes
 if __name__ == "__main__":
+    with open("config.yaml", "r") as file:
+        _config = yaml.load(file.read(), Loader=yaml.FullLoader)
+        _sftp_config = _config["SFTP"]
+        HOST = _sftp_config["Host"]
+        PORT = _sftp_config["Port"]
+        auths = _sftp_config["Auths"]
+        noauth = _sftp_config["NoAuth"]
+        # print(HOST, PORT, auths, noauth)
     dsfs = FSFactory(dsdrive_api=dsdriveapi)
-    server = BaseSFTPServer(("localhost", 8022), fs=dsfs)
+    server = BaseSFTPServer((HOST, PORT), fs=dsfs, auths=auths, noauth=noauth)
     try:
         #import rpdb2; rpdb2.start_embedded_debugger('password')
+        print("Serving SFTP on %s:%d" % (HOST, PORT))
         server.serve_forever()
     except (SystemExit, KeyboardInterrupt):
         server.server_close()
