@@ -73,6 +73,9 @@ or you can provide a password.
 But if you want to log into purepubkeyuser, password is not allowed.
 Logging into uselessuser is impossible, because neither Password nor PubKey is not provided.
 
+## Contribution
+Feel free to contribute by opening issues or submitting pull requests.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
