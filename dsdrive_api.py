@@ -10,6 +10,7 @@ from zlib import crc32
 import time
 import threading
 import array
+import fs.path
 
 
 chunk_size = 24 * 1024 * 1024  # MB
@@ -149,10 +150,7 @@ class DSdriveApi:
 
 
     def path_splitter(self, path):
-        paths = os.path.normpath(path).split(os.sep)
-        paths = list(filter(None, paths))
-        paths = list(filter(lambda x: x != ".", paths))
-        # print(paths)
+        paths = fs.path.relpath(fs.path.normpath(path)).split("/")
         return paths
 
     def makedirs(self, paths, allow_many=False, exist_ok=False):
@@ -481,13 +479,14 @@ if __name__ == "__main__":
 
     hook = HookTool(webhook_urls)
     dsdrive_api = DSdriveApi("mongodb://localhost:27017/", hook)
-    a = dsdrive_api.open_binary("test/aaa.txt", "w")
-    a.write(b"hello world")
-    a.seek(0)
-    a._read = True
-    print(a.read())
-    a._read = False
-    a.close()
+    dsdrive_api.path_splitter("./test/aaa.txt")
+    # a = dsdrive_api.open_binary("test/aaa.txt", "w")
+    # a.write(b"hello world")
+    # a.seek(0)
+    # a._read = True
+    # print(a.read())
+    # a._read = False
+    # a.close()
 
     # dsdrive_api.send_file("test/test_3mb.mp4")
     # dsdrive_api.send_file("test/testfile.txt")
