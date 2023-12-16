@@ -94,7 +94,6 @@ class DSFile(BytesIO):
     A file-like object that can be used to read and write files on DSdrive
 
     Attributes:
-        url (str): The URL of the file
         path (str): The path of the file
         dsdrive (DSdriveApi): The DSdriveApi object
         mode (str): The mode of the file
@@ -113,7 +112,6 @@ class DSFile(BytesIO):
         Create a DSFile object
 
         Args:
-            url (list): The URLs of the file
             path (str): The path of the file
             dsdrive (DSdriveApi): The DSdriveApi object
             mode (str): The mode of the file
