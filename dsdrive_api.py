@@ -17,27 +17,63 @@ chunk_size = 24 * 1024 * 1024  # MB
 
 
 class HookTool:
+    """
+    A tool to send data to multiple webhooks
+
+    Attributes:
+        hooks (list): A list of webhook URLs
+        index (int): The index of the current webhook URL
+    
+    Methods:
+        get_hook: Get the current webhook URL
+        send: Send data to the current webhook URL
+        get: Send a GET request to a URL, handling rate limits and nothing
+    """
     def __init__(self, hooks):
         self.hooks = hooks
         self.index = 0
 
     def get_hook(self):
+        """
+        Get the current webhook URL
+        """
         self.index += 1
         return self.hooks[self.index % len(self.hooks)]
     
     def send(self, *args, **kwargs):
+        """
+        Send data to the current webhook URL, handling rate limits
+
+        Args:
+            *args: Arguments to be passed to requests.post
+            **kwargs: Keyword arguments to be passed to requests.post
+        
+        Returns:
+            requests.Response: The response of the request
+        """
         resp = requests.post(self.get_hook(), *args, **kwargs)
         if resp.status_code != 200:
             msg_json = resp.json()
             if resp.status_code == 429:
                 retry_after = msg_json["retry_after"]
-                time.sleep(retry_after + 0.1)
+                time.sleep(retry_after + 0.03)
                 return self.send(*args, **kwargs)
             else:
                 raise Exception(f"Error sending data : {resp.text}")
         return resp
     
     def get(self, *args, **kwargs):
+        """
+        Send a GET request to a URL, handling rate limits and nothing
+
+        Args:
+            *args: Arguments to be passed to requests.get
+            **kwargs: Keyword arguments to be passed to requests.get
+        
+        Returns:
+            requests.Response: The response of the request
+        """
+
         resp = requests.get(*args, **kwargs)
         if resp.status_code != 200:
             msg_json = resp.json()
@@ -54,7 +90,34 @@ class HookTool:
 
 
 class DSFile(BytesIO):
+    """
+    A file-like object that can be used to read and write files on DSdrive
+
+    Attributes:
+        url (str): The URL of the file
+        path (str): The path of the file
+        dsdrive (DSdriveApi): The DSdriveApi object
+        mode (str): The mode of the file
+        _read (bool): Whether the file is readable
+        _write (bool): Whether the file is writable
+    
+    Methods:
+        readable: Whether the file is readable
+        writable: Whether the file is writable
+        read: Read the file
+        write: Write to the file
+        close: Close the file
+    """
     def __init__(self, url, path, dsdrive, mode="r"):
+        """
+        Create a DSFile object
+
+        Args:
+            url (str): The URL of the file
+            path (str): The path of the file
+            dsdrive (DSdriveApi): The DSdriveApi object
+            mode (str): The mode of the file
+        """
         super().__init__()
         self.url:str = url
         self.dsdrive: DSdriveApi = dsdrive
@@ -79,16 +142,43 @@ class DSFile(BytesIO):
         return self._write
     
     def read(self, size=-1) -> bytes:
+        """
+        Read the file
+        
+        Args:
+            size (int): The number of bytes to read. If -1, read the whole file
+            
+        Returns:
+            bytes: The bytes read
+            
+        Raises:
+            OSError: If the file is not readable
+        """
         if not self._read:
             raise OSError("File not readable")
         return super().read(size)
     
     def write(self, b: bytes) -> int:
+        """
+        Read the file
+        
+        Args:
+            b (bytes): The bytes to write
+            
+        Returns:
+            int: The number of bytes written
+            
+        Raises:
+            OSError: If the file is not writable
+        """
         if not self._write:
             raise OSError("File not writable")
         return super().write(b)
 
     def close(self):
+        """
+        Close the file, and send the file to DSdrive if the file is writable
+        """
         if self._write:
             # print("Sending file", self.path)
             # Update the URL in the database when the BytesIO is closed
@@ -101,7 +191,38 @@ class DSFile(BytesIO):
 
 
 class DSdriveApi:
+    """
+    A class to interact with Discord's file storage system
+
+    Attributes:
+        db (pymongo.database.Database): The database object
+        hook (HookTool): The HookTool object
+        root_id (bson.objectid.ObjectId): The ID of the root directory
+    
+    Methods:
+        clear: Clear the database
+        path_splitter: Split a path into a list of directories
+        makedirs: Create directories
+        find: Find a path
+        send_file: Send a file to DSdrive
+        open_binary: Open a file
+        get_file_urls: Get the URLs of a file
+        download_file: Download a file
+        list_dir: List a directory
+        remove_file: Remove a file
+        remove_dir: Remove a directory
+        remove_tree: Remove a tree
+        get_info: Get the info of a file or directory
+        set_info: Set the info of a file or directory
+    """
     def __init__(self, url, hook) -> None:
+        """
+        Create a DSdriveApi object, creates the root directory if it doesn't exist
+
+        Args:
+            url (str): The URL of the MongoDB database
+            hook (HookTool): The HookTool object        
+        """
         client = MongoClient(url)
         self.db = client["dsdrive"]
         self.hook: HookTool = hook
@@ -144,17 +265,40 @@ class DSdriveApi:
         self.db["tree"].create_index("parent")
 
     def clear(self):
+        """
+        Clear the database safely
+        """
         root = self.db["tree"].find_one({"name": "", "parent": None})
         self.db["tree"].drop()
         self.db["tree"].insert_one(root)
 
 
     def path_splitter(self, path):
+        """
+        Split a path into a list
+
+        Args:
+            path (str): The path to split
+
+        Returns:
+            list: The list of directories
+        """
         paths = fs.path.relpath(fs.path.normpath(path)).split("/")
         paths = list(filter(None, paths))
         return paths
 
     def makedirs(self, paths, allow_many=False, exist_ok=False):
+        """
+        Create directories
+
+        Args:
+            paths (list): The list of directories to create
+            allow_many (bool): Whether to allow creating multiple directories
+            exist_ok (bool): Whether to allow creating directories that already exist
+        
+        Returns:
+            Union[int, ObjectID]: The ID of the last directory created, or an error code
+        """
         parent_id = self.root_id
         already_exist_counter = 0
         resource_not_found_counter = 0
@@ -205,6 +349,16 @@ class DSdriveApi:
         return parent_id
 
     def find(self, paths, return_obj=False):
+        """
+        Find a path
+
+        Args:
+            paths (list): The list of directories to find
+            return_obj (bool): Whether to return the object found
+        
+        Returns:
+            Union[int, ObjectID, dict]: The ID of the last directory found, or a dict representing object found if return_obj is True, or an error code
+        """
         # paths = os.path.normpath(path).split(os.sep)
         parent_id = self.root_id
         for i, j in zip(paths, range(len(paths), 0, -1)):
@@ -224,7 +378,13 @@ class DSdriveApi:
         return 0, parent_id
 
     def send_file(self, path, file_obj=None):
-        # with open(path, "rb") as file:
+        """
+        Send a file to Didcord
+
+        Args:
+            path (str): The path to send the file to
+            file_obj (Union[str, BytesIO, DSFile]): The file to send
+        """
 
         if file_obj is None:
             file = open(path, "rb")
@@ -317,6 +477,16 @@ class DSdriveApi:
             file.close()
 
     def open_binary(self, path, mode):
+        """
+        Open a file
+
+        Args:
+            path (str): The path of the file
+            mode (str): The mode of the file
+        
+        Returns:
+            DSFile: The file-like object
+        """
         # check if the file size is 0
         stat, fn = self.find(self.path_splitter(path), return_obj=True)
         if stat == 0:
@@ -327,6 +497,15 @@ class DSdriveApi:
         return DSFile(self.get_file_urls(path), path, self, mode)
 
     def get_file_urls(self, path):
+        """
+        Get the URLs of a file
+
+        Args:
+            path (str): The path of the file
+        
+        Returns:
+            list: The list of URLs of the file
+        """
         paths = self.path_splitter(path)
 
         stat, fn = self.find(paths, return_obj=True)
@@ -340,6 +519,13 @@ class DSdriveApi:
             return None
 
     def download_file(self, path_src, path_dst=None):
+        """
+        Download a file from Discord to the local filesystem
+
+        Args:
+            path_src (str): The path of the file on Discord
+            path_dst (str): The path of the file on the local filesystem
+        """
         if path_dst is None:
             path_dst = path_src
         urls = self.get_file_urls(path_src)
@@ -358,6 +544,16 @@ class DSdriveApi:
                 path_dst.write(resp.content)
 
     def list_dir(self, path):
+        """
+        List a directory
+
+        Args:
+            path (str): The path of the directory
+
+        Returns:
+            Union[bool, NoneType]: Whether the path is a directory, or an error code
+            Union[list, int]: A list of files and directories, or an error code
+        """
         paths = self.path_splitter(path)
         if paths == []:  # Root directory
             return True, self.db["tree"].find({"parent": self.root_id})
@@ -371,6 +567,15 @@ class DSdriveApi:
         return True, fn
 
     def remove_file(self, path):
+        """
+        Remove a file
+
+        Args:
+            path (str): The path of the file
+
+        Returns:
+            int: An error code, or 0 if successful
+        """
         paths = self.path_splitter(path)
         stat, fn = self.find(paths, return_obj=True)
         if stat != 0:
@@ -381,6 +586,15 @@ class DSdriveApi:
         return 0
 
     def remove_dir(self, path):
+        """
+        Remove a directory
+        
+        Args:
+            path (str): The path of the directory
+
+        Returns:
+            int: An error code, or 0 if successful
+        """
         paths = self.path_splitter(path)
         if len(paths) == 0:
             return 4  # Root directory cannot be deleted
@@ -400,6 +614,15 @@ class DSdriveApi:
         self.db["tree"].delete_one({"_id": fn["_id"]})
 
     def remove_tree(self, path):
+        """
+        Remove a tree, not implemented yet
+
+        Args:
+            path (str): The path of the tree
+
+        Returns:
+            int: An error code, or 0 if successful
+        """
         paths = self.path_splitter(path)
         if len(paths) == 0:
             return 4  # Root directory cannot be deleted
@@ -411,6 +634,16 @@ class DSdriveApi:
         )
 
     def get_info(self, path):
+        """
+        Get the info of a file or directory
+
+        Args:
+            path (str): The path of the file or directory
+
+        Returns:
+            int: An error code, or 0 if successful
+            dict: The info of the file or directory
+        """
         paths = self.path_splitter(path)
         if paths == []:  # Root directory
             fn = self.db["tree"].find_one({"_id": self.root_id})
@@ -434,6 +667,17 @@ class DSdriveApi:
         return 0, raw_info
 
     def set_info(self, path, info):
+        """
+        Set the info of a file or directory
+
+        Args:
+            path (str): The path of the file or directory
+            info (dict): The info to set
+        
+        Returns:
+            int: An error code, or 0 if successful
+        """
+
         paths = self.path_splitter(path)
         if paths == []:  # Root directory
             fn = self.db["tree"].find_one({"_id": self.root_id})

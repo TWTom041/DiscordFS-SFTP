@@ -1,4 +1,6 @@
-LICENSE = """
+#!/usr/bin/python
+
+PYFS_LICENSE = """
 Copyright (c) 2009-2015, Will McGugan <will@willmcgugan.com> and contributors.
 All rights reserved.
 
@@ -169,12 +171,13 @@ class SFTPServerInterface(paramiko.SFTPServerInterface):
 
     @report_sftp_errors
     def list_folder(self, path):
+        print(path)
         self.renew()
         if not isinstance(path, str):
             path = path.decode(self.encoding)
         stats = []
         for entry in self.fs.listdir(path, absolute=True):
-            stat = self.stat(entry)
+            stat = self.stat(join(path, entry))
             if not isinstance(stat, int):
                 stats.append(stat)
         
@@ -275,11 +278,16 @@ class SFTPServerInterface(paramiko.SFTPServerInterface):
                 f.truncate(attr.st_size)
         return paramiko.SFTP_OK
 
+    def chdir(self, path):
+        print("shdhdh", path)
+        return paramiko.SFTP_OK
+    
     def readlink(self, path):
         return paramiko.SFTP_OP_UNSUPPORTED
 
     def symlink(self, path):
         return paramiko.SFTP_OP_UNSUPPORTED
+    
 
 
 class SFTPHandle(paramiko.SFTPHandle):
