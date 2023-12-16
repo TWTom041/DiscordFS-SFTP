@@ -6,6 +6,8 @@ import fs.errors
 import fs.info
 import fs.subfs
 import string
+import sys
+sys.setrecursionlimit(1200)
 
 class DiscordFS(fs.base.FS):
     def __init__(self, dsdrive_api=None) -> None:
@@ -103,6 +105,8 @@ class DiscordFS(fs.base.FS):
             raise fs.errors.ResourceNotFound(path)
         elif parent_id == 2:
             raise fs.errors.DirectoryExists(path)
+        elif parent_id == 3:
+            raise fs.errors.DirectoryExists(path)
 
         return fs.subfs.SubFS(self, path)
 
@@ -161,6 +165,72 @@ class DiscordFS(fs.base.FS):
 
         
         return self.dsdrive_api.open_binary(path, mode)
+    
+    def copy(
+        self,
+        src_path,  # type: Text
+        dst_path,  # type: Text
+        overwrite=False,  # type: bool
+        preserve_time=False,  # type: bool
+    ):
+        # type: (...) -> None
+        """Copy file contents from ``src_path`` to ``dst_path``.
+
+        Arguments:
+            src_path (str): Path of source file.
+            dst_path (str): Path to destination file.
+            overwrite (bool): If `True`, overwrite the destination file
+                if it exists (defaults to `False`).
+            preserve_time (bool): If `True`, try to preserve mtime of the
+                resource (defaults to `False`).
+
+        Raises:
+            fs.errors.DestinationExists: If ``dst_path`` exists,
+                and ``overwrite`` is `False`.
+            fs.errors.ResourceNotFound: If a parent directory of
+                ``dst_path`` does not exist.
+            fs.errors.FileExpected: If ``src_path`` is not a file.
+
+        """
+        self.check()
+        stat = self.dsdrive_api.copy(src_path, dst_path, overwrite=overwrite, preserve_timestamps=preserve_time)
+        if stat == 1:
+            raise fs.errors.ResourceNotFound(src_path)
+        elif stat == 2:
+            raise fs.errors.FileExpected(src_path)
+        elif stat == 3:
+            raise fs.errors.DestinationExists(dst_path)
+    
+    def move(self, src_path, dst_path, overwrite=False, preserve_time=False):
+        # type: (Text, Text, bool, bool) -> None
+        """Move a file from ``src_path`` to ``dst_path``.
+
+        Arguments:
+            src_path (str): A path on the filesystem to move.
+            dst_path (str): A path on the filesystem where the source
+                file will be written to.
+            overwrite (bool): If `True`, destination path will be
+                overwritten if it exists.
+            preserve_time (bool): If `True`, try to preserve mtime of the
+                resources (defaults to `False`).
+
+        Raises:
+            fs.errors.FileExpected: If ``src_path`` maps to a
+                directory instead of a file.
+            fs.errors.DestinationExists: If ``dst_path`` exists,
+                and ``overwrite`` is `False`.
+            fs.errors.ResourceNotFound: If a parent directory of
+                ``dst_path`` does not exist.
+
+        """
+        self.check()
+        stat = self.dsdrive_api.rename(src_path, dst_path, overwrite=overwrite, preserve_timestamps=preserve_time)
+        if stat == 1:
+            raise fs.errors.ResourceNotFound(src_path)
+        elif stat == 2:
+            raise fs.errors.FileExpected(src_path)
+        elif stat == 3:
+            raise fs.errors.DestinationExists(dst_path)
 
     def remove(self, path):
         # type: (Text) -> None
@@ -263,19 +333,13 @@ if __name__ == "__main__":
         def make_fs(self):
             dsdriveapi.clear()
             # Return an instance of your FS object here
-            discord_fs = DiscordFS()
-            discord_fs.dsdrive_api = dsdriveapi
+            discord_fs = DiscordFS(dsdriveapi)
             return discord_fs
     if fulltest:
         unittest.main()
     else:
-        from io import BytesIO
-        temp_test = TestMyFS()
-        dsfs = temp_test.make_fs()
-        bytes_file = BytesIO(b"bar")
-        dsfs.upload("foo", bytes_file)
-
-        with dsfs.open("foo", "rb") as file:
-            print(file.read())
-    
+        dsfs = DiscordFS(dsdriveapi)
+        dsfs.writebytes("test.bin", b"test")
+        dsfs.writebytes("test.bin", b"bees")
+        print(dsfs.getsize("test.bin"))
 

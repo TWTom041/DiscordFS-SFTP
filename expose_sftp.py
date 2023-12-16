@@ -276,10 +276,6 @@ class SFTPServerInterface(paramiko.SFTPServerInterface):
             with self.fs.open(path,"r+") as f:
                 f.truncate(attr.st_size)
         return paramiko.SFTP_OK
-
-    def chdir(self, path):
-        print("shdhdh", path)
-        return paramiko.SFTP_OK
     
     def readlink(self, path):
         return paramiko.SFTP_OP_UNSUPPORTED

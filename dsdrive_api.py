@@ -123,6 +123,8 @@ class DSFile(BytesIO):
         self.mode:str = mode
         self._read:bool = False
         self._write:bool = False
+        if "t" in mode:
+            raise ValueError("text mode not supported")
         if "r" in mode:
             self._read = True
             self._write = True
@@ -133,6 +135,9 @@ class DSFile(BytesIO):
             self.seek(0)
         if "w" in mode or "x" in mode or "a" in mode:
             self._write = True
+        if "b" not in mode:
+            self.mode += "b"
+        self.seek(0)
 
     def readable(self) -> bool:
         return self._read
@@ -303,9 +308,11 @@ class DSdriveApi:
         resource_not_found_counter = 0
         for i in paths:
             fs = self.db["tree"].find_one(
-                {"name": i, "parent": parent_id, "type": "folder"}
+                {"name": i, "parent": parent_id}
             )
             if fs:
+                if fs["type"] != "folder":
+                    return 3  # Path already exists, but is not a folder
                 parent_id = fs["_id"]
                 resource_not_found_counter += 1
             else:
@@ -631,6 +638,114 @@ class DSdriveApi:
         fn = self.db["tree"].find_one(
             {"name": paths[-1], "parent": parent_id}
         )
+    
+    def rename(self, path_src, path_dst, overwrite=False, create_dirs=False, preserve_timestamps=False):
+        """
+        Rename a file or directory
+
+        Args:
+            path_src (str): The path of the file or directory
+            path_dst (str): The new path of the file or directory
+
+        Returns:
+            int: An error code, or 0 if successful
+        """
+        paths_src = self.path_splitter(path_src)
+        paths_dst = self.path_splitter(path_dst)
+        
+        if len(paths_src) == 0 or len(paths_dst) == 0:
+            return 2  # Root directory is not a file
+        stat, src_fn = self.find(paths_src, return_obj=True)
+        if stat != 0:
+            return 1  # Path not found
+        
+        stat, parent_id_dst = self.find(paths_dst[:-1])
+        if stat != 0:
+            if create_dirs:
+                parent_id_dst = self.makedirs(paths_dst[:-1], allow_many=True, exist_ok=True)
+            else:
+                return 1  # Path not found
+        
+        if not (src_fn["type"] == "file"):
+            return 2  # src is a folder
+        
+        dst_fn = self.db["tree"].find_one(
+            {"name": paths_dst[-1], "parent": parent_id_dst}
+        )
+        if dst_fn:
+            if not overwrite:
+                return 3  # Path already exists
+            if not (dst_fn["type"] == "file"):
+                return 2  # src and dst are not both files
+            self.db["tree"].delete_one({"_id": dst_fn["_id"]})
+                
+        self.db["tree"].update_one(
+            {"_id": src_fn["_id"]}, {"$set": {"name": paths_dst[-1], "parent": parent_id_dst}}
+        )
+        if not preserve_timestamps:
+            self.db["tree"].update_one(
+                {"_id": src_fn["_id"]}, {"$set": {"details.modified": time.time()}}
+            )
+        return 0
+    
+
+    def copy(self, path_src, path_dst, overwrite=False, create_dirs=False, preserve_timestamps=False):
+        """
+        Copy a file or directory
+
+        Args:
+            path_src (str): The path of the file or directory
+            path_dst (str): The new path of the file or directory
+
+        Returns:
+            int: An error code, or 0 if successful
+        """
+        paths_src = self.path_splitter(path_src)
+        paths_dst = self.path_splitter(path_dst)
+        
+        if len(paths_dst) == 0:
+            return 2  # Root directory is not a file
+        stat, src_fn = self.find(paths_src, return_obj=True)
+        if stat != 0:
+            return 1  # Path not found
+        
+        stat, parent_id_dst = self.find(paths_dst[:-1])
+        if stat != 0:
+            if create_dirs:
+                parent_id_dst = self.makedirs(paths_dst[:-1], allow_many=True, exist_ok=True)
+            else:
+                return 1  # Path not found
+        
+        if not (src_fn["type"] == "file"):
+            return 2  # src is a folder
+        
+        dst_fn = self.db["tree"].find_one(
+            {"name": paths_dst[-1], "parent": parent_id_dst}
+        )
+        if dst_fn:
+            if not overwrite:
+                return 3  # Path already exists
+            if not (dst_fn["type"] == "file"):
+                return 2  # src and dst are not both files
+            self.db["tree"].delete_one({"_id": dst_fn["_id"]})
+
+        self.db["tree"].insert_one(
+            {
+                "name": paths_dst[-1],
+                "type": src_fn["type"],
+                "urls": src_fn["urls"].copy(),
+                "chunk_sizes": src_fn["chunk_sizes"].copy(),
+                "access": src_fn["access"],
+                "details": src_fn["details"],
+                "parent": parent_id_dst,
+            }
+        )
+        if not preserve_timestamps:
+            self.db["tree"].update_one(
+                {"_id": src_fn["_id"]}, {"$set": {"details.modified": time.time()}}
+            )
+        return 0
+
 
     def get_info(self, path):
         """
@@ -664,6 +779,28 @@ class DSdriveApi:
             "details": fn["details"],
         }
         return 0, raw_info
+    
+    def _set_info_by_fn(self, fn, info):
+        out_info = {}
+        if "access" in info:
+            out_info["access"] = {**fn["access"], **info["access"]}
+
+        if "details" in info:
+            out_info["details"] = {**fn["details"], **info["details"]}
+        
+        if "basic" in info:
+            if "name" in info["basic"]:
+                out_info["name"] = info["basic"]["name"]
+
+            if "is_dir" in info["basic"]:
+                if info["basic"]["is_dir"]:
+                    out_info["type"] = "folder"
+
+                else:
+                    out_info["type"] = "file"
+
+        self.db["tree"].update_one({"_id": fn["_id"]}, {"$set": out_info})
+        return 0
 
     def set_info(self, path, info):
         """
@@ -690,31 +827,9 @@ class DSdriveApi:
             )
             if not fn:
                 return 1
-        if "access" in info:
-            self.db["tree"].update_one(
-                {"_id": fn["_id"]},
-                {"$set": {"access": {**fn["access"], **info["access"]}}},
-            )
-        if "details" in info:
-            self.db["tree"].update_one(
-                {"_id": fn["_id"]},
-                {"$set": {"details": {**fn["access"], **info["details"]}}},
-            )
-        if "basic" in info:
-            if "name" in info["basic"]:
-                self.db["tree"].update_one(
-                    {"_id": fn["_id"]}, {"$set": {"name": info["basic"]["name"]}}
-                )
-            if "is_dir" in info["basic"]:
-                if info["basic"]["is_dir"]:
-                    self.db["tree"].update_one(
-                        {"_id": fn["_id"]}, {"$set": {"type": "folder"}}
-                    )
-                else:
-                    self.db["tree"].update_one(
-                        {"_id": fn["_id"]}, {"$set": {"type": "file"}}
-                    )
-        return 0
+        
+        return self._set_info_by_fn(fn, info)
+        
 
 
 if __name__ == "__main__":
@@ -723,7 +838,13 @@ if __name__ == "__main__":
 
     hook = HookTool(webhook_urls)
     dsdrive_api = DSdriveApi("mongodb://localhost:27017/", hook)
-    dsdrive_api.path_splitter("./test/aaa.txt")
+
+    with dsdrive_api.open_binary("test/testfile.txt", "w") as file:
+        file.write(b"hello world")
+    with dsdrive_api.open_binary("test/testfile.txt", "w") as file:
+        file.write(b"not hello w")
+    with dsdrive_api.open_binary("test/testfile.txt", "r") as file:
+        print(file.read())
     # a = dsdrive_api.open_binary("test/aaa.txt", "w")
     # a.write(b"hello world")
     # a.seek(0)
