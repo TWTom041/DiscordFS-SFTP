@@ -171,7 +171,6 @@ class SFTPServerInterface(paramiko.SFTPServerInterface):
 
     @report_sftp_errors
     def list_folder(self, path):
-        print(path)
         self.renew()
         if not isinstance(path, str):
             path = path.decode(self.encoding)

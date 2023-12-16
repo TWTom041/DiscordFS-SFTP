@@ -108,18 +108,18 @@ class DSFile(BytesIO):
         write: Write to the file
         close: Close the file
     """
-    def __init__(self, url, path, dsdrive, mode="r"):
+    def __init__(self, path, dsdrive, mode="r", zero_size=False):
         """
         Create a DSFile object
 
         Args:
-            url (str): The URL of the file
+            url (list): The URLs of the file
             path (str): The path of the file
             dsdrive (DSdriveApi): The DSdriveApi object
             mode (str): The mode of the file
+            zero_size (bool): Whether the file is empty
         """
         super().__init__()
-        self.url:str = url
         self.dsdrive: DSdriveApi = dsdrive
         self.path:str = path
         self.mode:str = mode
@@ -128,7 +128,8 @@ class DSFile(BytesIO):
         if "r" in mode:
             self._read = True
             self._write = True
-            self.dsdrive.download_file(self.path, self)
+            if not zero_size:
+                self.dsdrive.download_file(self.path, self)
             if "+" not in mode:
                 self._write = False
             self.seek(0)
@@ -493,8 +494,8 @@ class DSdriveApi:
             if fn["type"] == "folder":
                 raise OSError("Path is a folder")
             if fn["details"]["size"] == 0:
-                return DSFile([], path, self, mode)
-        return DSFile(self.get_file_urls(path), path, self, mode)
+                return DSFile(path, self, mode, zero_size=True)
+        return DSFile(path, self, mode)
 
     def get_file_urls(self, path):
         """
