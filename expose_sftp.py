@@ -444,7 +444,7 @@ class BaseServerInterface(paramiko.ServerInterface):
         if kind == 'session':
             return paramiko.OPEN_SUCCEEDED
         return paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
-
+    
     def check_auth_none(self, username):
         """Check whether the user can proceed without authentication."""
         if self.noauth:
