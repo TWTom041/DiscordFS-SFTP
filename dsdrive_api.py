@@ -51,7 +51,12 @@ class HookTool:
         Returns:
             requests.Response: The response of the request
         """
-        resp = requests.post(self.get_hook(), *args, **kwargs)
+        kwargs["timeout"] = 10
+        try:
+            resp = requests.post(self.get_hook(), *args, **kwargs)
+        except requests.exceptions.Timeout:
+            raise OSError("Connection timed out")
+        
         if resp.status_code != 200:
             msg_json = resp.json()
             if resp.status_code == 429:
@@ -74,7 +79,12 @@ class HookTool:
             requests.Response: The response of the request
         """
 
-        resp = requests.get(*args, **kwargs)
+        kwargs["timeout"] = 10
+        try:
+            resp = requests.get(*args, **kwargs)
+        except requests.exceptions.Timeout:
+            raise OSError("Connection timed out")
+        
         if resp.status_code != 200:
             msg_json = resp.json()
             if resp.status_code == 429:
@@ -125,19 +135,20 @@ class DSFile(BytesIO):
         self._write:bool = False
         if "t" in mode:
             raise ValueError("text mode not supported")
-        if "r" in mode:
+        if "r" in mode or "a" in mode:
             self._read = True
             self._write = True
             if not zero_size:
                 self.dsdrive.download_file(self.path, self)
             if "+" not in mode:
                 self._write = False
-            self.seek(0)
+            if "r" in mode:
+                self.seek(0)
         if "w" in mode or "x" in mode or "a" in mode:
             self._write = True
         if "b" not in mode:
             self.mode += "b"
-        self.seek(0)
+        # self.seek(0)
 
     def readable(self) -> bool:
         return self._read
@@ -178,6 +189,24 @@ class DSFile(BytesIO):
         if not self._write:
             raise OSError("File not writable")
         return super().write(b)
+
+    def truncate(self, size=None):
+        original_pos = self.tell()
+        if size is None:
+            size = self.tell()
+        elif size < 0:
+            raise ValueError(f"negative size value {size}")
+
+        current_size = self.getbuffer().nbytes
+
+        if size < current_size:
+            # If size is smaller than the current size, truncate the buffer
+            super().truncate(size)
+        elif size > current_size:
+            # If size is larger than the current size, extend with null bytes
+            super().write(b'\0' * (size - current_size))
+        self.seek(original_pos)
+        return size
 
     def close(self):
         """
@@ -406,14 +435,13 @@ class DSdriveApi:
                 raise TypeError("file_obj must be a BytesIO or str")
 
         chunk = file.read(chunk_size)
-        serial = 0
         
         paths = self.path_splitter(path)
         parent_id = self.makedirs(paths[:-1], allow_many=True, exist_ok=True)
         urls = []
         chunk_sizes = []
 
-        while chunk or serial == 0:
+        while chunk:
             with BytesIO(chunk) as buffer:
                 fname = (
                     md5(chunk).hexdigest() + "-" + crc32(chunk).to_bytes(4, "big").hex()
@@ -425,7 +453,7 @@ class DSdriveApi:
                 chunk_sizes.append(len(chunk))
                 
             chunk = file.read(chunk_size)
-            serial += 1
+
         try:
             # dirname = os.path.dirname(path)
 
@@ -437,7 +465,7 @@ class DSdriveApi:
                     # print(resp.json())
                     self.db["tree"].update_one(
                         {"_id": finder["_id"]},
-                        {"$set": {"urls": urls, "chunk_sizes": chunk_sizes}},
+                        {"$set": {"urls": urls, "chunk_sizes": chunk_sizes, "details.modified": time.time(), "details.size": size}},
                     )
                 else:
                     print("File already exists, and is a folder, skipping")
@@ -500,6 +528,9 @@ class DSdriveApi:
                 raise OSError("Path is a folder")
             if fn["details"]["size"] == 0:
                 return DSFile(path, self, mode, zero_size=True)
+        else:
+            # file does not exist, size is 0
+            return DSFile(path, self, mode, zero_size=True)
         return DSFile(path, self, mode)
 
     def get_file_urls(self, path):
@@ -535,7 +566,6 @@ class DSdriveApi:
         if path_dst is None:
             path_dst = path_src
         urls = self.get_file_urls(path_src)
-        # print(urls)
         if isinstance(path_dst, str):
             if not os.path.exists(path_dst):
                 with open(path_dst, "x") as file:
@@ -543,10 +573,12 @@ class DSdriveApi:
             with open(path_dst, "wb") as file:
                 for i, url in enumerate(urls):
                     resp = self.hook.get(url)
+                    print(resp.content)
                     file.write(resp.content)
         elif isinstance(path_dst, BytesIO) or isinstance(path_dst, DSFile):
             for i, url in enumerate(urls):
                 resp = self.hook.get(url)
+                # print(resp.content)
                 path_dst.write(resp.content)
 
     def list_dir(self, path):

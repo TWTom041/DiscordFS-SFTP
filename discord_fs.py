@@ -1,3 +1,4 @@
+from typing import Text
 import fs
 from dsdrive_api import DSdriveApi, HookTool
 import os
@@ -311,6 +312,11 @@ class DiscordFS(fs.base.FS):
         stat = self.dsdrive_api.set_info(path, info)
         if stat == 1:
             raise fs.errors.ResourceNotFound(path)
+    
+    def validatepath(self, path: Text) -> Text:
+        if not path.isprintable():
+            raise fs.errors.InvalidCharsInPath(path)
+        return super().validatepath(path)
         
 
 if __name__ == "__main__":
@@ -339,7 +345,16 @@ if __name__ == "__main__":
         unittest.main()
     else:
         dsfs = DiscordFS(dsdriveapi)
-        dsfs.writebytes("test.bin", b"test")
-        dsfs.writebytes("test.bin", b"bees")
-        print(dsfs.getsize("test.bin"))
+        dsfs.makedirs("foo", recreate=True)
+        dsfs.create("foo/test.txt")
+        with dsfs.open("foo/test.txt", "wb") as f:
+            f.write(b"Hello World")
+        with dsfs.open("foo/test.txt", "rb") as f:
+            print(f.read())
+        with dsfs.open("foo/test.txt", "ab") as f:
+            f.write(b"Hello World")
+        with dsfs.open("foo/test.txt", "rb") as f:
+            print(f.read())  # should be b"Hello WorldHello World"
+
+
 
