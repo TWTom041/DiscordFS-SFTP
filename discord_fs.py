@@ -14,7 +14,7 @@ class DiscordFS(fs.base.FS):
     def __init__(self, dsdrive_api=None) -> None:
         self.dsdrive_api: DSdriveApi = dsdrive_api
         self._lock = fs.base.threading.RLock()
-        self._meta = {"read_only": False}
+        self._meta = {"read_only": False, "unicode_paths": True, "case_insensitive": False}
 
     def get_new_fs(self):
         return DiscordFS(self.dsdrive_api)
@@ -345,16 +345,7 @@ if __name__ == "__main__":
         unittest.main()
     else:
         dsfs = DiscordFS(dsdriveapi)
-        dsfs.makedirs("foo", recreate=True)
-        dsfs.create("foo/test.txt")
-        with dsfs.open("foo/test.txt", "wb") as f:
-            f.write(b"Hello World")
-        with dsfs.open("foo/test.txt", "rb") as f:
-            print(f.read())
-        with dsfs.open("foo/test.txt", "ab") as f:
-            f.write(b"Hello World")
-        with dsfs.open("foo/test.txt", "rb") as f:
-            print(f.read())  # should be b"Hello WorldHello World"
+        print(dsfs.getmeta())
 
 
 
