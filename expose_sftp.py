@@ -35,7 +35,6 @@ import os
 import stat as statinfo
 import time
 import socketserver
-import threading
 import traceback
 import datetime
 from functools import wraps
@@ -505,13 +504,13 @@ class BaseServerInterface(paramiko.ServerInterface):
 if __name__ == "__main__":
     with open("config.yaml", "r") as file:
         _config = yaml.load(file.read(), Loader=yaml.FullLoader)
-        _sftp_config = _config["SFTP"]
-        HOST = _sftp_config["Host"]
-        PORT = _sftp_config["Port"]
-        auths = _sftp_config["Auths"]
-        noauth = _sftp_config["NoAuth"]
+        _sftp_config = _config.get("SFTP", {})
+        HOST = _sftp_config.get("Host", "127.0.0.1")
+        PORT = _sftp_config.get("Port", 8022)
+        auths = _sftp_config.get("Auths", [{"Username": "anonymous", "Password": "susman"}])
+        noauth = _sftp_config.get("NoAuth", False)
         # print(HOST, PORT, auths, noauth)
-    dsfs = FSFactory(dsdrive_api=dsdriveapi)
+    dsfs = FSFactory(dsdrive_api=dsdriveapi)  # can be replaced with whatever FS class
     server = BaseSFTPServer((HOST, PORT), fs=dsfs, auths=auths, noauth=noauth)
     try:
         #import rpdb2; rpdb2.start_embedded_debugger('password')
@@ -521,4 +520,5 @@ if __name__ == "__main__":
         server.server_close()
     except:
         print(traceback.format_exc())
+        server.server_close()
 

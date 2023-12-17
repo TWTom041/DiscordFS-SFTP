@@ -330,7 +330,8 @@ class DSdriveApi:
             exist_ok (bool): Whether to allow creating directories that already exist
         
         Returns:
-            Union[int, ObjectID]: The ID of the last directory created, or an error code
+            error_code (int): An error code, or 0 if successful
+            parent_id (Union[ObjectID, None]): The ID of the last directory created
         """
         parent_id = self.root_id
         already_exist_counter = 0
@@ -341,12 +342,12 @@ class DSdriveApi:
             )
             if fs:
                 if fs["type"] != "folder":
-                    return 3  # Path already exists, but is not a folder
+                    return 3, None  # Path already exists, but is not a folder
                 parent_id = fs["_id"]
                 resource_not_found_counter += 1
             else:
                 if not allow_many and len(paths) - resource_not_found_counter > 1:
-                    return 1  # Only one directory allowed, resource not found
+                    return 1, None  # Only one directory allowed, resource not found
                 o = self.db["tree"].insert_one(
                     {
                         "name": i,
@@ -380,8 +381,8 @@ class DSdriveApi:
                 parent_id = o.inserted_id
                 already_exist_counter += 1
         if (not exist_ok) and already_exist_counter == 0:
-            return 2  # No directories created, already exists
-        return parent_id
+            return 2, None  # No directories created, already exists
+        return 0, parent_id
 
     def find(self, paths, return_obj=False):
         """
@@ -392,7 +393,8 @@ class DSdriveApi:
             return_obj (bool): Whether to return the object found
         
         Returns:
-            Union[int, ObjectID, dict]: The ID of the last directory found, or a dict representing object found if return_obj is True, or an error code
+            error_code (int): An error code, or 0 if successful
+            parent_id (Union[ObjectID, None]): The ID of the last directory found
         """
         # paths = os.path.normpath(path).split(os.sep)
         parent_id = self.root_id
@@ -437,7 +439,7 @@ class DSdriveApi:
         chunk = file.read(chunk_size)
         
         paths = self.path_splitter(path)
-        parent_id = self.makedirs(paths[:-1], allow_many=True, exist_ok=True)
+        _, parent_id = self.makedirs(paths[:-1], allow_many=True, exist_ok=True)
         urls = []
         chunk_sizes = []
 
@@ -589,20 +591,20 @@ class DSdriveApi:
             path (str): The path of the directory
 
         Returns:
-            Union[bool, NoneType]: Whether the path is a directory, or an error code
-            Union[list, int]: A list of files and directories, or an error code
+            error_code (int): an error code, or 0 if successful
+            Union[iterable, None]: A list of files and directories, or None if an error occured
         """
         paths = self.path_splitter(path)
         if paths == []:  # Root directory
-            return True, self.db["tree"].find({"parent": self.root_id})
+            return 0, self.db["tree"].find({"parent": self.root_id})
         stat, parent = self.find(paths, return_obj=True)
         if stat != 0:
-            return None, 1  # Path not found
+            return 1, None  # Path not found
         if parent["type"] == "file":
-            return None, 2  # Path is a file
+            return 2, None  # Path is a file
 
         fn = self.db["tree"].find({"parent": parent["_id"]})
-        return True, fn
+        return 0, fn
 
     def remove_file(self, path):
         """
@@ -694,7 +696,7 @@ class DSdriveApi:
         stat, parent_id_dst = self.find(paths_dst[:-1])
         if stat != 0:
             if create_dirs:
-                parent_id_dst = self.makedirs(paths_dst[:-1], allow_many=True, exist_ok=True)
+                _, parent_id_dst = self.makedirs(paths_dst[:-1], allow_many=True, exist_ok=True)
             else:
                 return 1  # Path not found
         
@@ -744,7 +746,7 @@ class DSdriveApi:
         stat, parent_id_dst = self.find(paths_dst[:-1])
         if stat != 0:
             if create_dirs:
-                parent_id_dst = self.makedirs(paths_dst[:-1], allow_many=True, exist_ok=True)
+                _, parent_id_dst = self.makedirs(paths_dst[:-1], allow_many=True, exist_ok=True)
             else:
                 return 1  # Path not found
         

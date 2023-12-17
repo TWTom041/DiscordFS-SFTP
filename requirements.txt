@@ -2,3 +2,4 @@ fs
 paramiko
 pymongo
 requests
+pyyaml

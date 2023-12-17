@@ -65,12 +65,10 @@ class DiscordFS(fs.base.FS):
         """
         self.check()
         stat, objs = list(self.dsdrive_api.list_dir(path))
-        if not stat:
-            if objs == 1:
-                raise fs.errors.ResourceNotFound(path)
-            elif objs == 2:
-                raise fs.errors.DirectoryExpected(path)
-            return None
+        if stat == 1:
+            raise fs.errors.ResourceNotFound(path)
+        elif stat == 2:
+            raise fs.errors.DirectoryExpected(path)
         return [i["name"] for i in objs]
 
 
@@ -101,12 +99,12 @@ class DiscordFS(fs.base.FS):
         """
         self.check()
         paths = self.dsdrive_api.path_splitter(path)
-        parent_id = self.dsdrive_api.makedirs(paths, allow_many=False, exist_ok=recreate)
-        if parent_id == 1:
+        stat, parent_id = self.dsdrive_api.makedirs(paths, allow_many=False, exist_ok=recreate)
+        if stat == 1:
             raise fs.errors.ResourceNotFound(path)
-        elif parent_id == 2:
+        elif stat == 2:
             raise fs.errors.DirectoryExists(path)
-        elif parent_id == 3:
+        elif stat == 3:
             raise fs.errors.DirectoryExists(path)
 
         return fs.subfs.SubFS(self, path)
