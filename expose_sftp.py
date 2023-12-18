@@ -37,6 +37,8 @@ import time
 import socketserver
 import traceback
 import datetime
+import copy
+import struct
 from functools import wraps
 
 import paramiko
@@ -48,6 +50,9 @@ from io import StringIO
 
 from discord_fs import DiscordFS
 from dsdrive_api import DSdriveApi, HookTool
+
+from paramiko.sftp import _VERSION, CMD_EXTENDED, CMD_INIT, CMD_VERSION, SFTP_OP_UNSUPPORTED, SFTPError
+from paramiko.message import Message
 
 
 HOST = "127.0.0.1"
@@ -271,6 +276,7 @@ class SFTPServerInterface(paramiko.SFTPServerInterface):
         #  Any other attr requests fail out.
         if attr._flags:
             if attr._flags != attr.FLAG_SIZE:
+                print(attr.__dict__)
                 raise Unsupported("Unsupported attribute flags: %s" % attr._flags)
             with self.fs.open(path,"r+") as f:
                 f.truncate(attr.st_size)
@@ -328,6 +334,56 @@ class SFTPServer(paramiko.SFTPServer):
     """
     An SFTPServer class that closes the filesystem when done.
     """
+    def _send_server_version(self):
+        # winscp will freak out if the server sends version info before the
+        # client finishes sending INIT.
+        t, data = self._read_packet()
+        if t != CMD_INIT:
+            raise SFTPError("Incompatible sftp protocol")
+        version = struct.unpack(">I", data[:4])[0]
+        # advertise that we support "check-file"
+        extension_pairs = ["copy-data", "1", "check-file", "md5,sha1"]
+        msg = Message()
+        msg.add_int(_VERSION)
+        msg.add(*extension_pairs)
+        self._send_packet(CMD_VERSION, msg)
+        return version
+
+    def _process(self, t, request_number, msg):
+        if t == CMD_EXTENDED:
+            # Copy of CMD_EXTENDED implementation from SFTPServer._process
+            tag = msg.get_text()
+            # print(tag)
+            if tag == "check-file":
+                self._check_file(request_number, msg)
+            elif tag == "posix-rename@openssh.com":
+                oldpath = msg.get_text()
+                newpath = msg.get_text()
+                self._send_status(
+                    request_number, self.server.posix_rename(oldpath, newpath)
+                )
+            elif tag == "copy-data":
+                oldpath = msg.get_text()
+                newpath = msg.get_text()
+                print("ashsjhdjh  ", oldpath, newpath)
+                if not isinstance(oldpath, str):
+                    oldpath = oldpath.decode(self.server.encoding)
+                if not isinstance(newpath, str):
+                    newpath = newpath.decode(self.server.encoding)
+                print(len(newpath))
+                print("ashsjhdjh  ", oldpath, newpath)
+                
+                try:
+                    self.server.fs.copy(oldpath, newpath)
+                    self._send_status(request_number, paramiko.SFTP_OK)
+                except:
+                    print(traceback.format_exc())
+                    self._send_status(request_number, paramiko.SFTP_FAILURE)
+            else:
+                self._send_status(request_number, SFTP_OP_UNSUPPORTED)
+        else:
+            super(SFTPServer, self)._process(t, request_number, msg)
+
 
     def finish_subsystem(self):
         # Close the SFTPServerInterface, it will close the pyfs file system.
