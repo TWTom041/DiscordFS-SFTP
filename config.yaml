@@ -20,3 +20,7 @@ SFTP:
     - Username: purepubkeyuser
       PubKey: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDEol5/oekZKSwNoNrpMWech21QHPhQF8unDxFj8ThgTpzsbMVsI3FXN5hDb4Sqd00Eedwj1MW6HZsVa4NSJTYnm73hv0CGXFz/KgEwwso8xtZosALI0AKjWL9yAQRrToSN/hbzlsK73lOpCnNRPbL6Sbuw13bddDsI7Qc186RoeN7/G/MKu+3Mm6kGxbq9EPA+LRMGbK2AdO0/KxwXeTGeS5idYsfhJsBPMZjq64bE2Lcjij754DrHEh7M4YUXlzfs7UKAuvuqrY/euthBCS3rWi5MbNYXBUyrzEg02WhJ8cvOlV7HtKiy5PHJzSTFbzlYrcJLflrd3uWXWghF1Dx1
     - Username: uselessuser
+MongoDB:
+  Prefix: mongodb://
+  Host: 127.0.0.1
+  Port: 27017

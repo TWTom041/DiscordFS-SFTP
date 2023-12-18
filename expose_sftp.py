@@ -65,7 +65,6 @@ with open("webhooks.txt", "r") as file:
     _hook = HookTool(_webhook_urls)
 
 FSFactory = DiscordFS  # can be replaced with whatever FS class
-dsdriveapi = DSdriveApi("mongodb://localhost:27017/", _hook)
 
 
 # Default host key used by BaseSFTPServer
@@ -565,7 +564,15 @@ if __name__ == "__main__":
         PORT = _sftp_config.get("Port", 8022)
         auths = _sftp_config.get("Auths", [{"Username": "anonymous", "Password": "susman"}])
         noauth = _sftp_config.get("NoAuth", False)
+
+        mongodb_config = _config.get("MongoDB", {})
+        prefix = mongodb_config.get("Prefix", "mongodb+srv://")
+        host = mongodb_config.get("Host", "127.0.0.1")
+        port = mongodb_config.get("Port", "27017")
         # print(HOST, PORT, auths, noauth)
+    
+    
+    dsdriveapi = DSdriveApi(f"{prefix}{host}:{port}", _hook)
     dsfs = FSFactory(dsdrive_api=dsdriveapi)  # can be replaced with whatever FS class
     server = BaseSFTPServer((HOST, PORT), fs=dsfs, auths=auths, noauth=noauth)
     try:

@@ -1,5 +1,6 @@
 from typing import Text
 import fs
+import yaml
 from dsdrive_api import DSdriveApi, HookTool
 import os
 import fs.base
@@ -324,7 +325,14 @@ if __name__ == "__main__":
 
     hook = HookTool(webhook_urls)
 
-    dsdriveapi = DSdriveApi("mongodb://localhost:27017/", hook)
+    with open("config.yaml", "r") as file:
+        _config = yaml.load(file.read(), Loader=yaml.FullLoader)
+        mongodb_config = _config.get("MongoDB", {})
+        prefix = mongodb_config.get("Prefix", "mongodb+srv://")
+        host = mongodb_config.get("Host", "127.0.0.1")
+        port = mongodb_config.get("Port", "27017")
+
+    dsdriveapi = DSdriveApi(f"{prefix}{host}:{port}", hook)
 
     # discord_fs = DiscordFS()
     # discord_fs.dsdrive_api = dsdriveapi
