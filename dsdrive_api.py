@@ -11,6 +11,10 @@ import time
 import threading
 import array
 import fs.path
+import base64
+import hashlib
+from Crypto.Random import get_random_bytes
+from Crypto.Cipher import AES
 
 
 chunk_size = 24 * 1024 * 1024  # MB
@@ -97,6 +101,36 @@ class HookTool:
             time.sleep(0.1)
             return self.get(*args, **kwargs)
         return resp
+    
+class AESCipher(object):
+
+    def __init__(self, key):
+        self.bs = AES.block_size
+        if isinstance(key, str):
+            key = key.encode("utf-8")
+        self.key = hashlib.sha256(key).digest()
+
+    def encrypt(self, raw):
+        raw = self._pad(raw)
+        iv = get_random_bytes(AES.block_size)
+        cipher = AES.new(self.key, AES.MODE_CBC, iv)
+        encrypted = cipher.encrypt(raw)
+        return base64.b64encode(iv + encrypted)
+
+    def decrypt(self, enc):
+        enc = base64.b64decode(enc)
+        iv = enc[:AES.block_size]
+        cipher = AES.new(self.key, AES.MODE_CBC, iv)
+        decrypted = cipher.decrypt(enc[AES.block_size:])
+        return AESCipher._unpad(decrypted)
+
+    def _pad(self, s):
+        padding = self.bs - len(s) % self.bs
+        return s + bytes([padding] * padding)
+
+    @staticmethod
+    def _unpad(s):
+        return s[:-s[-1]]
 
 
 class DSFile(BytesIO):
@@ -248,7 +282,7 @@ class DSdriveApi:
         get_info: Get the info of a file or directory
         set_info: Set the info of a file or directory
     """
-    def __init__(self, url, hook) -> None:
+    def __init__(self, url, hook, key="despacito") -> None:
         """
         Create a DSdriveApi object, creates the root directory if it doesn't exist
 
@@ -259,6 +293,7 @@ class DSdriveApi:
         client = MongoClient(url)
         self.db = client["dsdrive"]
         self.hook: HookTool = hook
+        self.key = key
         root = self.db["tree"].find_one({"name": "", "parent": None})
         if not root:
             root = self.db["tree"].insert_one(
@@ -296,6 +331,34 @@ class DSdriveApi:
             self.root_id = root["_id"]
         
         self.db["tree"].create_index("parent")
+
+    def encrypt(self, data):
+        """
+        Encrypt data
+
+        Args:
+            data (bytes): The data to encrypt
+            encryption_func (function): The encryption function to use
+        
+        Returns:
+            bytes: The encrypted data
+        """
+        crypto = AESCipher(self.key)
+        return crypto.encrypt(data)
+    
+    def decrypt(self, data):
+        """
+        Decrypt data
+
+        Args:
+            data (bytes): The data to decrypt
+            encryption_func (function): The decryption function to use
+        
+        Returns:
+            bytes: The decrypted data
+        """
+        crypto = AESCipher(self.key)
+        return crypto.decrypt(data)
 
     def clear(self):
         """
@@ -444,6 +507,7 @@ class DSdriveApi:
         chunk_sizes = []
 
         while chunk:
+            chunk = self.encrypt(chunk)
             with BytesIO(chunk) as buffer:
                 fname = (
                     md5(chunk).hexdigest() + "-" + crc32(chunk).to_bytes(4, "big").hex()
@@ -575,13 +639,14 @@ class DSdriveApi:
             with open(path_dst, "wb") as file:
                 for i, url in enumerate(urls):
                     resp = self.hook.get(url)
-                    print(resp.content)
-                    file.write(resp.content)
+                    chunk = self.decrypt(resp.content)
+                    file.write(chunk)
         elif isinstance(path_dst, BytesIO) or isinstance(path_dst, DSFile):
             for i, url in enumerate(urls):
                 resp = self.hook.get(url)
                 # print(resp.content)
-                path_dst.write(resp.content)
+                chunk = self.decrypt(resp.content)
+                path_dst.write(chunk)
 
     def list_dir(self, path):
         """

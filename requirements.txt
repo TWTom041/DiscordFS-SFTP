@@ -3,3 +3,4 @@ paramiko
 pymongo
 requests
 pyyaml
+pycryptodome
