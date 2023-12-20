@@ -2,6 +2,14 @@ import base64
 import hashlib
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
+import time
+
+def sizeof_fmt(num, suffix="B"):
+    for unit in ("", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"):
+        if abs(num) < 1024.0:
+            return f"{num:3.1f}{unit}{suffix}"
+        num /= 1024.0
+    return f"{num:.1f}Yi{suffix}"
 
 class AESCipher(object):
 
@@ -31,13 +39,21 @@ class AESCipher(object):
     def _unpad(s):
         return s[:-s[-1]]
 
+
 # Example usage
-key = b'SomeSecretKey'
+key = b''
 cipher = AESCipher(key)
 
-data_to_encrypt = b'This is some binary data.'
-encrypted_data = cipher.encrypt(data_to_encrypt)
-print("Encrypted:", encrypted_data)
+data_to_encrypt = b'This is some binary data.' * 50000000
 
+atime = time.time()
+encrypted_data = cipher.encrypt(data_to_encrypt)
+print("Time taken to encrypt: ", time.time() - atime)  # 7.8s on my machine
+print("size of data: ", sizeof_fmt(len(data_to_encrypt)))  # 1.2GiB
+# print("Encrypted:", encrypted_data)
+
+atime = time.time()
 decrypted_data = cipher.decrypt(encrypted_data)
-print("Decrypted:", decrypted_data)
+print("Time taken to encrypt: ", time.time() - atime)  # 6.6s on my machine
+print("size of data: ", sizeof_fmt(len(decrypted_data)))  # 1.2GiB
+# print("Decrypted:", decrypted_data)
