@@ -1,6 +1,3 @@
-# from discord import SyncWebhook
-# import discord
-
 import os
 from io import BytesIO
 from hashlib import md5
