@@ -1,20 +1,20 @@
 # from discord import SyncWebhook
 # import discord
-import requests
+
 import os
 from io import BytesIO
-from pymongo import MongoClient
-import pymongo
 from hashlib import md5
 from zlib import crc32
 import time
-import threading
-import array
-import fs.path
 import base64
 import hashlib
-from Crypto.Random import get_random_bytes
-from Crypto.Cipher import AES
+
+import requests
+from pymongo import MongoClient
+import pymongo
+import fs.path
+
+from key_mgr import AESCipher
 
 
 chunk_size = 24 * 1024 * 1024  # MB
@@ -101,37 +101,6 @@ class HookTool:
             time.sleep(0.1)
             return self.get(*args, **kwargs)
         return resp
-    
-class AESCipher(object):
-
-    def __init__(self, key):
-        self.bs = AES.block_size
-        if isinstance(key, str):
-            key = key.encode("utf-8")
-        self.key = hashlib.sha256(key).digest()
-
-    def encrypt(self, raw):
-        raw = self._pad(raw)
-        iv = get_random_bytes(AES.block_size)
-        cipher = AES.new(self.key, AES.MODE_CBC, iv)
-        encrypted = cipher.encrypt(raw)
-        return base64.b64encode(iv + encrypted)
-
-    def decrypt(self, enc):
-        enc = base64.b64decode(enc)
-        iv = enc[:AES.block_size]
-        cipher = AES.new(self.key, AES.MODE_CBC, iv)
-        decrypted = cipher.decrypt(enc[AES.block_size:])
-        return AESCipher._unpad(decrypted)
-
-    def _pad(self, s):
-        padding = self.bs - len(s) % self.bs
-        return s + bytes([padding] * padding)
-
-    @staticmethod
-    def _unpad(s):
-        return s[:-s[-1]]
-
 
 class DSFile(BytesIO):
     """
