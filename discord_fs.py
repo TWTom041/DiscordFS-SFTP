@@ -328,7 +328,7 @@ if __name__ == "__main__":
     with open("config.yaml", "r") as file:
         _config = yaml.load(file.read(), Loader=yaml.FullLoader)
         mongodb_config = _config.get("MongoDB", {})
-        prefix = mongodb_config.get("Prefix", "mongodb+srv://")
+        prefix = mongodb_config.get("Prefix", "mongodb://")
         host = mongodb_config.get("Host", "127.0.0.1")
         port = mongodb_config.get("Port", "27017")
 
