@@ -1,0 +1,11 @@
+services:
+  dsfs:
+    build: .
+    ports:
+      - "8022:8022"
+  mongodb:
+    image: "mongo:7.0.5-rc0-jammy"
+    container_name: "mongodb-dsfs"
+    expose:
+      - "27017"
+    

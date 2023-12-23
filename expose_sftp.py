@@ -39,20 +39,20 @@ import traceback
 import datetime
 import copy
 import struct
+import argparse
 from functools import wraps
 
 import paramiko
+from paramiko.sftp import _VERSION, CMD_EXTENDED, CMD_INIT, CMD_VERSION, SFTP_OP_UNSUPPORTED, SFTPError
+from paramiko.message import Message
 import yaml
 
 from fs.path import *
 from fs.errors import *
-from io import StringIO
 
 from discord_fs import DiscordFS
 from dsdrive_api import DSdriveApi, HookTool
 
-from paramiko.sftp import _VERSION, CMD_EXTENDED, CMD_INIT, CMD_VERSION, SFTP_OP_UNSUPPORTED, SFTPError
-from paramiko.message import Message
 
 
 HOST = "127.0.0.1"
@@ -62,30 +62,23 @@ auths = []
 
 with open("webhooks.txt", "r") as file:
     _webhook_urls = [i for i in file.read().split("\n") if i]
+    if not _webhook_urls:
+        # no webhooks found
+        raise Exception("No webhooks found in webhooks.txt")
     _hook = HookTool(_webhook_urls)
 
 FSFactory = DiscordFS  # can be replaced with whatever FS class
 
 
 # Default host key used by BaseSFTPServer
-#
-DEFAULT_HOST_KEY = paramiko.RSAKey.from_private_key(StringIO(
-    "-----BEGIN RSA PRIVATE KEY-----\n" \
-    "MIICXgIBAAKCAIEAl7sAF0x2O/HwLhG68b1uG8KHSOTqe3Cdlj5i/1RhO7E2BJ4B\n" \
-    "3jhKYDYtupRnMFbpu7fb21A24w3Y3W5gXzywBxR6dP2HgiSDVecoDg2uSYPjnlDk\n" \
-    "HrRuviSBG3XpJ/awn1DObxRIvJP4/sCqcMY8Ro/3qfmid5WmMpdCZ3EBeC0CAwEA\n" \
-    "AQKCAIBSGefUs5UOnr190C49/GiGMN6PPP78SFWdJKjgzEHI0P0PxofwPLlSEj7w\n" \
-    "RLkJWR4kazpWE7N/bNC6EK2pGueMN9Ag2GxdIRC5r1y8pdYbAkuFFwq9Tqa6j5B0\n" \
-    "GkkwEhrcFNBGx8UfzHESXe/uE16F+e8l6xBMcXLMJVo9Xjui6QJBAL9MsJEx93iO\n" \
-    "zwjoRpSNzWyZFhiHbcGJ0NahWzc3wASRU6L9M3JZ1VkabRuWwKNuEzEHNK8cLbRl\n" \
-    "TyH0mceWXcsCQQDLDEuWcOeoDteEpNhVJFkXJJfwZ4Rlxu42MDsQQ/paJCjt2ONU\n" \
-    "WBn/P6iYDTvxrt/8+CtLfYc+QQkrTnKn3cLnAkEAk3ixXR0h46Rj4j/9uSOfyyow\n" \
-    "qHQunlZ50hvNz8GAm4TU7v82m96449nFZtFObC69SLx/VsboTPsUh96idgRrBQJA\n" \
-    "QBfGeFt1VGAy+YTLYLzTfnGnoFQcv7+2i9ZXnn/Gs9N8M+/lekdBFYgzoKN0y4pG\n" \
-    "2+Q+Tlr2aNlAmrHtkT13+wJAJVgZATPI5X3UO0Wdf24f/w9+OY+QxKGl86tTQXzE\n" \
-    "4bwvYtUGufMIHiNeWP66i6fYCucXCMYtx6Xgu2hpdZZpFw==\n" \
-    "-----END RSA PRIVATE KEY-----\n"
-))
+
+if not os.path.exists("host_key"):
+    # generate host key
+    DEFAULT_HOST_KEY = paramiko.RSAKey.generate(2048)
+    DEFAULT_HOST_KEY.write_private_key_file("host_key")
+    DEFAULT_HOST_KEY.write_public_key_file("host_key.pub")
+else:
+    DEFAULT_HOST_KEY = paramiko.RSAKey.from_private_key_file("host_key")
 
 
 def flags_to_mode(flags, binary=True):
@@ -557,6 +550,7 @@ class BaseServerInterface(paramiko.ServerInterface):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
     with open("config.yaml", "r") as file:
         _config = yaml.load(file.read(), Loader=yaml.FullLoader)
         _sftp_config = _config.get("SFTP", {})
@@ -569,10 +563,21 @@ if __name__ == "__main__":
         prefix = mongodb_config.get("Prefix", "mongodb+srv://")
         host = mongodb_config.get("Host", "127.0.0.1")
         port = mongodb_config.get("Port", "27017")
-        # print(HOST, PORT, auths, noauth)
+        mgdb_url = f"{prefix}{host}:{port}"
     
+    parser.add_argument("-m", "--mongo-url", type=str, default=mgdb_url, 
+                        help="set mongodb url")
+    parser.add_argument("-H", "--host", type=str, default=HOST,
+                        help="set sftp host")
+    parser.add_argument("-P", "--port", type=int, default=PORT,
+                        help="set sftp port")
     
-    dsdriveapi = DSdriveApi(f"{prefix}{host}:{port}", _hook)
+    args = parser.parse_args()
+    mgdb_url = args.mongo_url
+    HOST = args.host
+    PORT = args.port
+    
+    dsdriveapi = DSdriveApi(mgdb_url, _hook)
     dsfs = FSFactory(dsdrive_api=dsdriveapi)  # can be replaced with whatever FS class
     server = BaseSFTPServer((HOST, PORT), fs=dsfs, auths=auths, noauth=noauth)
     try:
