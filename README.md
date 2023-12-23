@@ -55,6 +55,25 @@ Ensure you have the following installed:
     sftp -P <PORT> user@<HOST>
     ```
 
+## Docker Setup
+
+1. Docker compose setup:
+    Bind your own `config.yaml` to `/app/config.yaml`, if no config is provided, you'll use the default config, which isn't quite safe.
+    ```yaml
+    services:
+        dsfs:
+            build: .
+            ports:
+                - "8022:8022"  # change it if you need to.
+            volumes:
+                - /path/to/config.yaml:/app/config.yaml
+    ```
+2. Run Docker compose
+
+    ```bash
+        docker-compose up
+    ```
+
 
 ## Example
 
