@@ -76,7 +76,7 @@ Ensure you have the following installed:
 2. Run Docker compose
 
     ```bash
-    docker-compose up
+    docker compose up
     ```
 
 
