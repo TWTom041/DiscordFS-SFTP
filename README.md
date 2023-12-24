@@ -57,8 +57,10 @@ Ensure you have the following installed:
 
 ## Docker Setup
 
-1. Docker compose setup:
-    Bind your own `config.yaml` to `/app/config.yaml`, if no config is provided, you'll use the default config, which isn't quite safe.
+1. Docker Compose setup:
+    
+    Bind your `webhooks.txt` to `/app/webhooks.yaml` or it won't work.
+    You may also bind your `config.yaml` to `/app/config.yaml`, if no config is provided, you'll use the default config, which isn't quite safe. If you want to use your host key, bind it to `/app/host_key`.
     ```yaml
     services:
         dsfs:
@@ -67,11 +69,14 @@ Ensure you have the following installed:
                 - "8022:8022"  # change it if you need to.
             volumes:
                 - /path/to/config.yaml:/app/config.yaml
+                - /path/to/webhooks.txt:/app/webhooks.txt
+                - /path/to/host_key:/app/host_key
+        ...
     ```
 2. Run Docker compose
 
     ```bash
-        docker-compose up
+    docker-compose up
     ```
 
 

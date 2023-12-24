@@ -1,0 +1,26 @@
+SFTP:
+  Host: 0.0.0.0
+  Port: 8022
+  NoAuth: false
+  Auths:
+  # - Username: user  <- this should be a string
+  #   Password: pass  <- this should be a string or null, optional
+  #   PubKey: pubKey  <- this should be a string or null, optional
+    - Username: shrek
+      Password: somebodyoncetoldme
+    - Username: shrek2
+      Password: theworldwasgonnarollme
+    - Username: shrek3
+      Password: iaintthesharpesttoolintheshed
+    - Username: nopwduser
+      Password: null  # <- if it's null, it means you can log in this user without password
+    - Username: pubkeyuser  # both pubkey and password are provided, can log in with both
+      Password: iamapassword
+      PubKey: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDEol5/oekZKSwNoNrpMWech21QHPhQF8unDxFj8ThgTpzsbMVsI3FXN5hDb4Sqd00Eedwj1MW6HZsVa4NSJTYnm73hv0CGXFz/KgEwwso8xtZosALI0AKjWL9yAQRrToSN/hbzlsK73lOpCnNRPbL6Sbuw13bddDsI7Qc186RoeN7/G/MKu+3Mm6kGxbq9EPA+LRMGbK2AdO0/KxwXeTGeS5idYsfhJsBPMZjq64bE2Lcjij754DrHEh7M4YUXlzfs7UKAuvuqrY/euthBCS3rWi5MbNYXBUyrzEg02WhJ8cvOlV7HtKiy5PHJzSTFbzlYrcJLflrd3uWXWghF1Dx1
+    - Username: purepubkeyuser
+      PubKey: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDEol5/oekZKSwNoNrpMWech21QHPhQF8unDxFj8ThgTpzsbMVsI3FXN5hDb4Sqd00Eedwj1MW6HZsVa4NSJTYnm73hv0CGXFz/KgEwwso8xtZosALI0AKjWL9yAQRrToSN/hbzlsK73lOpCnNRPbL6Sbuw13bddDsI7Qc186RoeN7/G/MKu+3Mm6kGxbq9EPA+LRMGbK2AdO0/KxwXeTGeS5idYsfhJsBPMZjq64bE2Lcjij754DrHEh7M4YUXlzfs7UKAuvuqrY/euthBCS3rWi5MbNYXBUyrzEg02WhJ8cvOlV7HtKiy5PHJzSTFbzlYrcJLflrd3uWXWghF1Dx1
+    - Username: uselessuser
+MongoDB:
+  Prefix: mongodb://
+  Host: mongodb
+  Port: 27017

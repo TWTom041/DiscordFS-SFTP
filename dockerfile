@@ -14,6 +14,8 @@ RUN apt-get update && apt-get install -y git gnupg curl
 
 COPY . .
 
+RUN cp /app/config4docker.yaml /app/config.yaml
+
 RUN curl -fsSL https://pgp.mongodb.com/server-7.0.asc | \
    gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg \
    --dearmor
@@ -26,4 +28,4 @@ EXPOSE 8022
 RUN chmod +x start.sh
 
 # Run expose_sftp.py when the container launches
-CMD ["python", "expose_sftp.py", "-m", "mongodb://mongodb:27017"]
+CMD ["python", "expose_sftp.py"]
