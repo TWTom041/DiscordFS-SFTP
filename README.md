@@ -68,9 +68,9 @@ Ensure you have the following installed:
             ports:
                 - "8022:8022"  # change it if you need to.
             volumes:
-                - /path/to/config.yaml:/app/config.yaml
-                - /path/to/webhooks.txt:/app/webhooks.txt
-                - /path/to/host_key:/app/host_key
+                - "/path/to/config.yaml:/app/config.yaml"
+                - "/path/to/webhooks.txt:/app/webhooks.txt"
+                - "/path/to/host_key:/app/host_key"
         ...
     ```
 2. Run Docker compose

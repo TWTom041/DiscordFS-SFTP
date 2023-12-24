@@ -72,13 +72,12 @@ FSFactory = DiscordFS  # can be replaced with whatever FS class
 
 # Default host key used by BaseSFTPServer
 
-if not os.path.exists("host_key"):
-    # generate host key
-    DEFAULT_HOST_KEY = paramiko.RSAKey.generate(2048)
-    DEFAULT_HOST_KEY.write_private_key_file("host_key")
-    DEFAULT_HOST_KEY.write_public_key_file("host_key.pub")
-else:
-    DEFAULT_HOST_KEY = paramiko.RSAKey.from_private_key_file("host_key")
+try:
+    HOST_KEY = paramiko.RSAKey.from_private_key_file("host_key")
+except:
+    HOST_KEY = paramiko.RSAKey.generate(2048)
+    HOST_KEY.write_private_key_file("host_key")
+    # HOST_KEY.write_public_key_file("host_key.pub")
 
 
 def flags_to_mode(flags, binary=True):
@@ -455,7 +454,7 @@ class BaseSFTPServer(ThreadedTCPServer):
         self.auths = auths if auths is not None else []
         self.noauth = noauth
         if host_key is None:
-            host_key = DEFAULT_HOST_KEY
+            host_key = HOST_KEY
         self.host_key = host_key
         if RequestHandlerClass is None:
             RequestHandlerClass = SFTPRequestHandler
