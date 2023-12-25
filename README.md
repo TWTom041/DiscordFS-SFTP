@@ -54,6 +54,11 @@ pip install -r requirements-bot.txt
 ```
 - run `bot.py`
 
+#### Bot Commands
+
+- `_gen [amount]` generates **amount** webhooks and sends the link to the channel. amount defaults to 1 and can be at most 10.
+- `_rem` removes all webhooks in the channel. 
+
 ## Usage
 
 1. Run the main script:
