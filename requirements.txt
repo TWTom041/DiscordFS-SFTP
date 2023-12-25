@@ -4,3 +4,6 @@ pymongo
 requests
 pyyaml
 pycryptodome
+faker
+discord
+python-dotenv
