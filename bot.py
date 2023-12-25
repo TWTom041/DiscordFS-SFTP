@@ -3,6 +3,16 @@ from discord.ext import commands
 import faker
 import dotenv
 
+"""
+add a file named .env in the same directory as this file
+with the following content:
+TOKEN=[your_token_here]
+
+BOT USAGE:
+    _gen [amount] - Generates a webhook in the current channel
+    _rem          - Removes all webhooks in the current channel
+"""
+
 TOKEN = dotenv.get_key('.env', 'TOKEN')
 
 intents = discord.Intents.all()
