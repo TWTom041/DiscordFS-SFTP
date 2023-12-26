@@ -40,7 +40,24 @@ Ensure you have the following installed:
 
 - SFTP connection details can be configured in `config.yaml`.
 - You should create a file called webhooks.txt with your webhooks, one webhook per line.
+- You can use the bot we created [link](https://discord.com/api/oauth2/authorize?client_id=1186899111643987990&permissions=536872960&scope=bot) or **host the bot**.
 
+#### Host the Bot
+
+- create `.env` file and insert your bot token:
+```.env
+TOKEN=your_bot_token
+```
+- install dependencies:
+```bash
+pip install -r requirements-bot.txt
+```
+- run `bot.py`
+
+#### Bot Commands
+
+- `_gen [amount]` generates **amount** webhooks and sends the link to the channel. amount defaults to 1 and can be at most 10.
+- `_rem` removes all webhooks in the channel. 
 
 ## Usage
 
