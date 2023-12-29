@@ -106,6 +106,14 @@ def flags_to_mode(flags, binary=True):
         mode += 't'
     return mode
 
+def permission_to_list(permission):
+    # permission is a octal number
+    if not 0o0 <= permission <= 0o777:
+        raise ValueError("Permission must be an octal number between 0 and 777")
+    # Convert each digit to a list of permissions
+    permission_list = ["o_r", "o_w", "o_x", "g_r", "g_w", "g_x", "u_r", "u_w", "u_x"]
+    permission_list = [d for i, d in enumerate(permission_list[::-1]) if permission & (1 << i)]
+    return permission_list
 
 def report_sftp_errors(func):
     """Decorator to catch and report FS errors as SFTP error codes.
@@ -146,7 +154,7 @@ class SFTPServerInterface(paramiko.SFTPServerInterface):
     def __init__(self, server, fs, encoding=None, *args, **kwds):
         self.fs = fs
         if encoding is None:
-            encoding = "utf8"
+            encoding = "utf+8"
         self.encoding = encoding
         super(SFTPServerInterface,self).__init__(server, *args, **kwds)
 
@@ -186,7 +194,7 @@ class SFTPServerInterface(paramiko.SFTPServerInterface):
         info = self.fs.getinfo(path)
 
         stat = paramiko.SFTPAttributes()
-        stat.filename = basename(path).encode(self.encoding)
+        stat.filename = basename(path)  # .encode(self.encoding)
         stat.st_size = info.get("details", "size")
 
         accessed = info.get("details", "accessed")
@@ -240,8 +248,8 @@ class SFTPServerInterface(paramiko.SFTPServerInterface):
             if not isinstance(path, str):
                 path = path.decode(self.encoding)
             self.fs.makedir(path)
-        except:
-            print(traceback.format_exc())
+        except DirectoryExists:
+            pass
         return paramiko.SFTP_OK
 
     @report_sftp_errors
@@ -254,7 +262,7 @@ class SFTPServerInterface(paramiko.SFTPServerInterface):
 
     def canonicalize(self, path):
         try:
-            return abspath(normpath(path)).encode(self.encoding)
+            return abspath(normpath(path))  # .encode(self.encoding)
         except IllegalBackReference:
             # If the client tries to use backrefs to escape root, gently
             # nudge them back to /.
@@ -267,8 +275,24 @@ class SFTPServerInterface(paramiko.SFTPServerInterface):
         #  Any other attr requests fail out.
         if attr._flags:
             if attr._flags != attr.FLAG_SIZE:
-                print(attr.__dict__)
-                raise Unsupported("Unsupported attribute flags: %s" % attr._flags)
+                try:
+                    out_attr = {"basic": {}, "details": {}, "access": {}}
+                    if attr.st_size:
+                        out_attr["details"] = {"size": attr.st_size}
+                    # if attr.st_uid:
+                    #     out_attr["access"] = {"uid": attr.st_uid}
+                    if attr.st_mode:
+                        perm_list = permission_to_list(attr.st_mode)
+                        out_attr["access"] = {"permissions": perm_list}
+                    if attr.st_atime:
+                        out_attr["details"]["accessed"] = datetime.datetime.timestamp(attr.st_atime)
+                    if attr.st_mtime:
+                        out_attr["details"]["modified"] = datetime.datetime.timestamp(attr.st_mtime)
+                    self.fs.setinfo(path, out_attr)
+                except:
+                    print(traceback.format_exc())
+                    return paramiko.SFTP_OP_UNSUPPORTED
+                return paramiko.SFTP_OK
             with self.fs.open(path,"r+") as f:
                 f.truncate(attr.st_size)
         return paramiko.SFTP_OK

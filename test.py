@@ -39,21 +39,36 @@ class AESCipher(object):
     def _unpad(s):
         return s[:-s[-1]]
 
+def permission_to_list(permission):
+    # permission is a octal number
+    if not 0o0 <= permission <= 0o777:
+        raise ValueError("Permission must be an octal number between 0 and 777")
+    # Convert each digit to a list of permissions
+    permission_list = ["o_r", "o_w", "o_x", "g_r", "g_w", "g_x", "u_r", "u_w", "u_x"]
+    permission_list = [d for i, d in enumerate(permission_list[::-1]) if permission & (1 << i)]
+    return permission_list
 
-# Example usage
-key = b''
-cipher = AESCipher(key)
+# Example usage:
+permission_value = 0o755
+result = permission_to_list(permission_value)
+print(result)
 
-data_to_encrypt = b'This is some binary data.' * 50000000
 
-atime = time.time()
-encrypted_data = cipher.encrypt(data_to_encrypt)
-print("Time taken to encrypt: ", time.time() - atime)  # 7.8s on my machine
-print("size of data: ", sizeof_fmt(len(data_to_encrypt)))  # 1.2GiB
-# print("Encrypted:", encrypted_data)
 
-atime = time.time()
-decrypted_data = cipher.decrypt(encrypted_data)
-print("Time taken to encrypt: ", time.time() - atime)  # 6.6s on my machine
-print("size of data: ", sizeof_fmt(len(decrypted_data)))  # 1.2GiB
-# print("Decrypted:", decrypted_data)
+# # Example usage
+# key = b''
+# cipher = AESCipher(key)
+
+# data_to_encrypt = b'This is some binary data.' * 50000000
+
+# atime = time.time()
+# encrypted_data = cipher.encrypt(data_to_encrypt)
+# print("Time taken to encrypt: ", time.time() - atime)  # 7.8s on my machine
+# print("size of data: ", sizeof_fmt(len(data_to_encrypt)))  # 1.2GiB
+# # print("Encrypted:", encrypted_data)
+
+# atime = time.time()
+# decrypted_data = cipher.decrypt(encrypted_data)
+# print("Time taken to encrypt: ", time.time() - atime)  # 6.6s on my machine
+# print("size of data: ", sizeof_fmt(len(decrypted_data)))  # 1.2GiB
+# # print("Decrypted:", decrypted_data)

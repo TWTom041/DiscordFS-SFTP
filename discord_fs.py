@@ -319,7 +319,7 @@ class DiscordFS(fs.base.FS):
         
 
 if __name__ == "__main__":
-    fulltest = True
+    full = True
     with open("webhooks.txt", "r") as file:
         webhook_urls = [i for i in file.read().split("\n") if i]
 
