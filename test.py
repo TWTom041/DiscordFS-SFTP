@@ -48,10 +48,42 @@ def permission_to_list(permission):
     permission_list = [d for i, d in enumerate(permission_list[::-1]) if permission & (1 << i)]
     return permission_list
 
-# Example usage:
-permission_value = 0o755
-result = permission_to_list(permission_value)
-print(result)
+
+import requests
+import io
+
+url = "https://discord.com/api/webhooks/1185590612725088297/_-k_sRmBv-eM_kzuGBroCkD8fOiyhbGU6l0d7GgOs3UhbMonxBPe69X2cJI33P6XOHhq" #webhook url, from here: https://i.imgur.com/f9XnAew.png
+
+#for all params, see https://discordapp.com/developers/docs/resources/webhook#execute-webhook
+
+result = requests.post(url, files={"file": io.BytesIO(b"test")})
+
+try:
+    print(result.json())
+    result.raise_for_status()
+except requests.exceptions.HTTPError as err:
+    print(err)
+else:
+    print("Payload delivered successfully, code {}.".format(result.status_code))
+
+import discord
+intents = discord.Intents.default()
+intents.message_content = True
+client = discord.Client(intents=intents)
+
+@client.event
+async def on_ready():
+    print('Logged in as:', client.user)
+
+@client.event
+async def on_message(message: discord.Message):
+    if message.author == client.user:
+        return
+    if message.content == 'ping':
+        message = await message.channel.fetch_message(1190645814863872102)
+        print(message.attachments)
+
+client.run('MTE5MDY3MzE1MjkzNDY5NDk4Mg.GWv41t.27lW4aF-HR70WcYMxRg2H-r1nNIDjVLCiBKnMY')
 
 
 

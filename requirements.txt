@@ -5,3 +5,4 @@ requests
 pyyaml
 pycryptodome
 faker
+click

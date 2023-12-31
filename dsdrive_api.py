@@ -5,6 +5,8 @@ from zlib import crc32
 import time
 import base64
 import hashlib
+from typing import Union
+from urllib.parse import urlparse
 
 import requests
 from pymongo import MongoClient
@@ -12,6 +14,7 @@ import pymongo
 import fs.path
 
 from key_mgr import AESCipher
+from bot_expire import DSUrl
 
 
 chunk_size = 24 * 1024 * 1024  # MB
@@ -24,12 +27,13 @@ class HookTool:
     Attributes:
         hooks (list): A list of webhook URLs
         index (int): The index of the current webhook URL
-    
+
     Methods:
         get_hook: Get the current webhook URL
         send: Send data to the current webhook URL
         get: Send a GET request to a URL, handling rate limits and nothing
     """
+
     def __init__(self, hooks):
         self.hooks = hooks
         self.index = 0
@@ -40,7 +44,7 @@ class HookTool:
         """
         self.index += 1
         return self.hooks[self.index % len(self.hooks)]
-    
+
     def send(self, *args, **kwargs):
         """
         Send data to the current webhook URL, handling rate limits
@@ -48,7 +52,7 @@ class HookTool:
         Args:
             *args: Arguments to be passed to requests.post
             **kwargs: Keyword arguments to be passed to requests.post
-        
+
         Returns:
             requests.Response: The response of the request
         """
@@ -57,7 +61,7 @@ class HookTool:
             resp = requests.post(self.get_hook(), *args, **kwargs)
         except requests.exceptions.Timeout:
             raise OSError("Connection timed out")
-        
+
         if resp.status_code != 200:
             msg_json = resp.json()
             if resp.status_code == 429:
@@ -67,7 +71,7 @@ class HookTool:
             else:
                 raise Exception(f"Error sending data : {resp.text}")
         return resp
-    
+
     def get(self, *args, **kwargs):
         """
         Send a GET request to a URL, handling rate limits and nothing
@@ -75,7 +79,7 @@ class HookTool:
         Args:
             *args: Arguments to be passed to requests.get
             **kwargs: Keyword arguments to be passed to requests.get
-        
+
         Returns:
             requests.Response: The response of the request
         """
@@ -85,7 +89,7 @@ class HookTool:
             resp = requests.get(*args, **kwargs)
         except requests.exceptions.Timeout:
             raise OSError("Connection timed out")
-        
+
         if resp.status_code != 200:
             msg_json = resp.json()
             if resp.status_code == 429:
@@ -99,6 +103,7 @@ class HookTool:
             return self.get(*args, **kwargs)
         return resp
 
+
 class DSFile(BytesIO):
     """
     A file-like object that can be used to read and write files on DSdrive
@@ -109,7 +114,7 @@ class DSFile(BytesIO):
         mode (str): The mode of the file
         _read (bool): Whether the file is readable
         _write (bool): Whether the file is writable
-    
+
     Methods:
         readable: Whether the file is readable
         writable: Whether the file is writable
@@ -117,6 +122,7 @@ class DSFile(BytesIO):
         write: Write to the file
         close: Close the file
     """
+
     def __init__(self, path, dsdrive, mode="r", zero_size=False):
         """
         Create a DSFile object
@@ -129,10 +135,10 @@ class DSFile(BytesIO):
         """
         super().__init__()
         self.dsdrive: DSdriveApi = dsdrive
-        self.path:str = path
-        self.mode:str = mode
-        self._read:bool = False
-        self._write:bool = False
+        self.path: str = path
+        self.mode: str = mode
+        self._read: bool = False
+        self._write: bool = False
         if "t" in mode:
             raise ValueError("text mode not supported")
         if "r" in mode or "a" in mode:
@@ -152,37 +158,37 @@ class DSFile(BytesIO):
 
     def readable(self) -> bool:
         return self._read
-    
+
     def writable(self) -> bool:
         return self._write
-    
+
     def read(self, size=-1) -> bytes:
         """
         Read the file
-        
+
         Args:
             size (int): The number of bytes to read. If -1, read the whole file
-            
+
         Returns:
             bytes: The bytes read
-            
+
         Raises:
             OSError: If the file is not readable
         """
         if not self._read:
             raise OSError("File not readable")
         return super().read(size)
-    
+
     def write(self, b: bytes) -> int:
         """
         Read the file
-        
+
         Args:
             b (bytes): The bytes to write
-            
+
         Returns:
             int: The number of bytes written
-            
+
         Raises:
             OSError: If the file is not writable
         """
@@ -204,7 +210,7 @@ class DSFile(BytesIO):
             super().truncate(size)
         elif size > current_size:
             # If size is larger than the current size, extend with null bytes
-            super().write(b'\0' * (size - current_size))
+            super().write(b"\0" * (size - current_size))
         self.seek(original_pos)
         return size
 
@@ -219,11 +225,105 @@ class DSFile(BytesIO):
             self._read = True
             self.dsdrive.send_file(self.path, self)
             self._read = False
-        
+
         super().close()
 
 
+
 class DSdriveApi:
+    """A wrapper class for DSdriveApiWebhook and DSdriveApiBot"""
+
+    def __init__(self, *args, **kwargs):
+        """Create a DSdriveApi object, where the backend api is either DSdriveApiWebhook or DSdriveApiBot, depending on the value of use_bot"""
+        use_bot = kwargs.pop("use_bot", False)
+        if use_bot:
+            raise NotImplementedError("Bot mode is not implemented yet")
+            pass  # TODO: Implement bot mode. I want this to be bot only, and fully functional without db. But struggle for performance issues because of channel.find() does not have an index.
+        else:
+            self._api = DSdriveApiWebhook(*args, **kwargs)
+
+    def __getattr__(self, name):
+        if name == "_api":
+            return self.__getattribute__(name)
+        if hasattr(self._api, name):
+            return getattr(self._api, name)
+        else:
+            raise AttributeError(
+                f"'{self.__class__.__name__}' object's backend api ({self.api.__class__.__name__}) has no attribute '{name}'"
+            )
+
+
+class DSdriveApiBase:
+    def __init__(self) -> None:
+        pass
+
+    def encrypt(self, data):
+        """
+        Encrypt data
+
+        Args:
+            data (bytes): The data to encrypt
+            encryption_func (function): The encryption function to use
+
+        Returns:
+            bytes: The encrypted data
+        """
+        crypto = AESCipher(self.key)
+        return crypto.encrypt(data)
+
+    def decrypt(self, data):
+        """
+        Decrypt data
+
+        Args:
+            data (bytes): The data to decrypt
+            encryption_func (function): The decryption function to use
+
+        Returns:
+            bytes: The decrypted data
+        """
+        crypto = AESCipher(self.key)
+        return crypto.decrypt(data)
+
+    def path_splitter(self, path):
+        """
+        Split a path into a list
+
+        Args:
+            path (str): The path to split
+
+        Returns:
+            list: The list of directories
+        """
+        paths = fs.path.relpath(fs.path.normpath(path)).split("/")
+        paths = list(filter(None, paths))
+        return paths
+
+    def open_binary(self, path, mode):
+        """
+        Open a file
+
+        Args:
+            path (str): The path of the file
+            mode (str): The mode of the file
+
+        Returns:
+            DSFile: The file-like object
+        """
+        # check if the file size is 0
+        stat, fn = self.find(self.path_splitter(path), return_obj=True)
+        if stat == 0:
+            if fn["type"] == "folder":
+                raise OSError("Path is a folder")
+            if fn["details"]["size"] == 0:
+                return DSFile(path, self, mode, zero_size=True)
+        else:
+            # file does not exist, size is 0
+            return DSFile(path, self, mode, zero_size=True)
+        return DSFile(path, self, mode)
+
+
+class DSdriveApiWebhook(DSdriveApiBase):
     """
     A class to interact with Discord's file storage system
 
@@ -231,7 +331,7 @@ class DSdriveApi:
         db (pymongo.database.Database): The database object
         hook (HookTool): The HookTool object
         root_id (bson.objectid.ObjectId): The ID of the root directory
-    
+
     Methods:
         clear: Clear the database
         path_splitter: Split a path into a list of directories
@@ -248,13 +348,14 @@ class DSdriveApi:
         get_info: Get the info of a file or directory
         set_info: Set the info of a file or directory
     """
+
     def __init__(self, url, hook, key="despacito") -> None:
         """
         Create a DSdriveApi object, creates the root directory if it doesn't exist
 
         Args:
             url (str): The URL of the MongoDB database
-            hook (HookTool): The HookTool object        
+            hook (HookTool): The HookTool object
         """
         client = MongoClient(url)
         self.db = client["dsdrive"]
@@ -295,36 +396,8 @@ class DSdriveApi:
             self.root_id = root.inserted_id
         else:
             self.root_id = root["_id"]
-        
+
         self.db["tree"].create_index("parent")
-
-    def encrypt(self, data):
-        """
-        Encrypt data
-
-        Args:
-            data (bytes): The data to encrypt
-            encryption_func (function): The encryption function to use
-        
-        Returns:
-            bytes: The encrypted data
-        """
-        crypto = AESCipher(self.key)
-        return crypto.encrypt(data)
-    
-    def decrypt(self, data):
-        """
-        Decrypt data
-
-        Args:
-            data (bytes): The data to decrypt
-            encryption_func (function): The decryption function to use
-        
-        Returns:
-            bytes: The decrypted data
-        """
-        crypto = AESCipher(self.key)
-        return crypto.decrypt(data)
 
     def clear(self):
         """
@@ -334,21 +407,6 @@ class DSdriveApi:
         self.db["tree"].drop()
         self.db["tree"].insert_one(root)
 
-
-    def path_splitter(self, path):
-        """
-        Split a path into a list
-
-        Args:
-            path (str): The path to split
-
-        Returns:
-            list: The list of directories
-        """
-        paths = fs.path.relpath(fs.path.normpath(path)).split("/")
-        paths = list(filter(None, paths))
-        return paths
-
     def makedirs(self, paths, allow_many=False, exist_ok=False):
         """
         Create directories
@@ -357,7 +415,7 @@ class DSdriveApi:
             paths (list): The list of directories to create
             allow_many (bool): Whether to allow creating multiple directories
             exist_ok (bool): Whether to allow creating directories that already exist
-        
+
         Returns:
             error_code (int): An error code, or 0 if successful
             parent_id (Union[ObjectID, None]): The ID of the last directory created
@@ -366,9 +424,7 @@ class DSdriveApi:
         already_exist_counter = 0
         resource_not_found_counter = 0
         for i in paths:
-            fs = self.db["tree"].find_one(
-                {"name": i, "parent": parent_id}
-            )
+            fs = self.db["tree"].find_one({"name": i, "parent": parent_id})
             if fs:
                 if fs["type"] != "folder":
                     return 3, None  # Path already exists, but is not a folder
@@ -420,7 +476,7 @@ class DSdriveApi:
         Args:
             paths (list): The list of directories to find
             return_obj (bool): Whether to return the object found
-        
+
         Returns:
             error_code (int): An error code, or 0 if successful
             parent_id (Union[ObjectID, None]): The ID of the last directory found
@@ -466,7 +522,7 @@ class DSdriveApi:
                 raise TypeError("file_obj must be a BytesIO or str")
 
         chunk = file.read(chunk_size)
-        
+
         paths = self.path_splitter(path)
         _, parent_id = self.makedirs(paths[:-1], allow_many=True, exist_ok=True)
         urls = []
@@ -478,26 +534,29 @@ class DSdriveApi:
                 fname = (
                     md5(chunk).hexdigest() + "-" + crc32(chunk).to_bytes(4, "big").hex()
                 )
-                resp = self.hook.send(
-                    files={"file": (fname, buffer)}
-                )
-                urls.append(resp.json()["attachments"][0]["url"])
+                resp = self.hook.send(files={"file": (fname, buffer)})
+                urls.append(DSUrl.from_url(resp.json()["attachments"][0]["url"]).save_format)
                 chunk_sizes.append(len(chunk))
-                
+
             chunk = file.read(chunk_size)
 
         try:
             # dirname = os.path.dirname(path)
 
-            finder = self.db["tree"].find_one(
-                {"name": paths[-1], "parent": parent_id}
-            )
+            finder = self.db["tree"].find_one({"name": paths[-1], "parent": parent_id})
             if finder:
                 if finder["type"] == "file":
                     # print(resp.json())
                     self.db["tree"].update_one(
                         {"_id": finder["_id"]},
-                        {"$set": {"urls": urls, "chunk_sizes": chunk_sizes, "details.modified": time.time(), "details.size": size}},
+                        {
+                            "$set": {
+                                "urls": urls,
+                                "chunk_sizes": chunk_sizes,
+                                "details.modified": time.time(),
+                                "details.size": size,
+                            }
+                        },
                     )
                 else:
                     print("File already exists, and is a folder, skipping")
@@ -542,36 +601,13 @@ class DSdriveApi:
         if file_obj is None:
             file.close()
 
-    def open_binary(self, path, mode):
-        """
-        Open a file
-
-        Args:
-            path (str): The path of the file
-            mode (str): The mode of the file
-        
-        Returns:
-            DSFile: The file-like object
-        """
-        # check if the file size is 0
-        stat, fn = self.find(self.path_splitter(path), return_obj=True)
-        if stat == 0:
-            if fn["type"] == "folder":
-                raise OSError("Path is a folder")
-            if fn["details"]["size"] == 0:
-                return DSFile(path, self, mode, zero_size=True)
-        else:
-            # file does not exist, size is 0
-            return DSFile(path, self, mode, zero_size=True)
-        return DSFile(path, self, mode)
-
     def get_file_urls(self, path):
         """
         Get the URLs of a file
 
         Args:
             path (str): The path of the file
-        
+
         Returns:
             list: The list of URLs of the file
         """
@@ -581,7 +617,7 @@ class DSdriveApi:
         if stat != 0:
             return None
         if fn:
-            urls = fn["urls"]
+            urls = (DSUrl(*u).url for u in fn["urls"])
             # print(urls)
             return urls
         else:
@@ -659,7 +695,7 @@ class DSdriveApi:
     def remove_dir(self, path):
         """
         Remove a directory
-        
+
         Args:
             path (str): The path of the directory
 
@@ -672,9 +708,7 @@ class DSdriveApi:
         stat, parent_id = self.find(paths[:-1])
         if stat != 0:
             return 1  # Path not found
-        fn = self.db["tree"].find_one(
-            {"name": paths[-1], "parent": parent_id}
-        )
+        fn = self.db["tree"].find_one({"name": paths[-1], "parent": parent_id})
         if not fn:
             return 1  # Path not found
         # check if is folder
@@ -700,11 +734,16 @@ class DSdriveApi:
         stat, parent_id = self.find(paths[:-1])
         if stat != 0:
             return 1
-        fn = self.db["tree"].find_one(
-            {"name": paths[-1], "parent": parent_id}
-        )
-    
-    def rename(self, path_src, path_dst, overwrite=False, create_dirs=False, preserve_timestamps=False):
+        fn = self.db["tree"].find_one({"name": paths[-1], "parent": parent_id})
+
+    def rename(
+        self,
+        path_src,
+        path_dst,
+        overwrite=False,
+        create_dirs=False,
+        preserve_timestamps=False,
+    ):
         """
         Rename a file or directory
 
@@ -717,23 +756,25 @@ class DSdriveApi:
         """
         paths_src = self.path_splitter(path_src)
         paths_dst = self.path_splitter(path_dst)
-        
+
         if len(paths_src) == 0 or len(paths_dst) == 0:
             return 2  # Root directory is not a file
         stat, src_fn = self.find(paths_src, return_obj=True)
         if stat != 0:
             return 1  # Path not found
-        
+
         stat, parent_id_dst = self.find(paths_dst[:-1])
         if stat != 0:
             if create_dirs:
-                _, parent_id_dst = self.makedirs(paths_dst[:-1], allow_many=True, exist_ok=True)
+                _, parent_id_dst = self.makedirs(
+                    paths_dst[:-1], allow_many=True, exist_ok=True
+                )
             else:
                 return 1  # Path not found
-        
+
         if not (src_fn["type"] == "file"):
             return 2  # src is a folder
-        
+
         dst_fn = self.db["tree"].find_one(
             {"name": paths_dst[-1], "parent": parent_id_dst}
         )
@@ -743,18 +784,25 @@ class DSdriveApi:
             if not (dst_fn["type"] == "file"):
                 return 2  # src and dst are not both files
             self.db["tree"].delete_one({"_id": dst_fn["_id"]})
-                
+
         self.db["tree"].update_one(
-            {"_id": src_fn["_id"]}, {"$set": {"name": paths_dst[-1], "parent": parent_id_dst}}
+            {"_id": src_fn["_id"]},
+            {"$set": {"name": paths_dst[-1], "parent": parent_id_dst}},
         )
         if not preserve_timestamps:
             self.db["tree"].update_one(
                 {"_id": src_fn["_id"]}, {"$set": {"details.modified": time.time()}}
             )
         return 0
-    
 
-    def copy(self, path_src, path_dst, overwrite=False, create_dirs=False, preserve_timestamps=False):
+    def copy(
+        self,
+        path_src,
+        path_dst,
+        overwrite=False,
+        create_dirs=False,
+        preserve_timestamps=False,
+    ):
         """
         Copy a file or directory
 
@@ -767,23 +815,25 @@ class DSdriveApi:
         """
         paths_src = self.path_splitter(path_src)
         paths_dst = self.path_splitter(path_dst)
-        
+
         if len(paths_dst) == 0:
             return 2  # Root directory is not a file
         stat, src_fn = self.find(paths_src, return_obj=True)
         if stat != 0:
             return 1  # Path not found
-        
+
         stat, parent_id_dst = self.find(paths_dst[:-1])
         if stat != 0:
             if create_dirs:
-                _, parent_id_dst = self.makedirs(paths_dst[:-1], allow_many=True, exist_ok=True)
+                _, parent_id_dst = self.makedirs(
+                    paths_dst[:-1], allow_many=True, exist_ok=True
+                )
             else:
                 return 1  # Path not found
-        
+
         if not (src_fn["type"] == "file"):
             return 2  # src is a folder
-        
+
         dst_fn = self.db["tree"].find_one(
             {"name": paths_dst[-1], "parent": parent_id_dst}
         )
@@ -810,7 +860,6 @@ class DSdriveApi:
                 {"_id": src_fn["_id"]}, {"$set": {"details.modified": time.time()}}
             )
         return 0
-
 
     def get_info(self, path):
         """
@@ -844,7 +893,7 @@ class DSdriveApi:
             "details": fn["details"],
         }
         return 0, raw_info
-    
+
     def _set_info_by_fn(self, fn, info):
         out_info = {}
         if "access" in info:
@@ -852,7 +901,7 @@ class DSdriveApi:
 
         if "details" in info:
             out_info["details"] = {**fn["details"], **info["details"]}
-        
+
         if "basic" in info:
             if "name" in info["basic"]:
                 out_info["name"] = info["basic"]["name"]
@@ -874,7 +923,7 @@ class DSdriveApi:
         Args:
             path (str): The path of the file or directory
             info (dict): The info to set
-        
+
         Returns:
             int: An error code, or 0 if successful
         """
@@ -887,14 +936,11 @@ class DSdriveApi:
             if stat != 0:
                 return 1
 
-            fn = self.db["tree"].find_one(
-                {"name": paths[-1], "parent": parent_id}
-            )
+            fn = self.db["tree"].find_one({"name": paths[-1], "parent": parent_id})
             if not fn:
                 return 1
-        
+
         return self._set_info_by_fn(fn, info)
-        
 
 
 if __name__ == "__main__":
@@ -910,6 +956,8 @@ if __name__ == "__main__":
         file.write(b"not hello w")
     with dsdrive_api.open_binary("test/testfile.txt", "r") as file:
         print(file.read())
+
+
     # a = dsdrive_api.open_binary("test/aaa.txt", "w")
     # a.write(b"hello world")
     # a.seek(0)
