@@ -14,7 +14,8 @@ import pymongo
 import fs.path
 
 from key_mgr import AESCipher
-from bot_expire import DSUrl
+from bot_expire import BotExpirePolicy
+from dsurl import DSUrl
 
 
 chunk_size = 24 * 1024 * 1024  # MB
@@ -349,7 +350,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
         set_info: Set the info of a file or directory
     """
 
-    def __init__(self, url, hook, key="despacito") -> None:
+    def __init__(self, url, hook, url_expire_policy=BotExpirePolicy, key="despacito") -> None:
         """
         Create a DSdriveApi object, creates the root directory if it doesn't exist
 
@@ -361,6 +362,8 @@ class DSdriveApiWebhook(DSdriveApiBase):
         self.db = client["dsdrive"]
         self.hook: HookTool = hook
         self.key = key
+        self.url_expire_policy = url_expire_policy()
+        self.url_expire_policy.setup()
         root = self.db["tree"].find_one({"name": "", "parent": None})
         if not root:
             root = self.db["tree"].insert_one(

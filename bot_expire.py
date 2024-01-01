@@ -36,7 +36,8 @@ class UrlEvent(threading.Event):
 class RenewCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        
+
+
     @commands.Cog.listener()
     async def on_get_url(self, channel_id, message_id, event: UrlEvent):
         message = await self.bot.get_channel(channel_id).fetch_message(message_id)
@@ -73,18 +74,18 @@ class BotExpirePolicy(BaseExpirePolicy):
         while block == True and (self.bot is None) or (not self.bot.is_ready()):
             pass
     
-    def setup(self):
-        self.run_bot_background()
+    def setup(self, token: str):
+        self.run_bot_background(token)
     
-    def renew_url(self, dsurls: Iterable[DSUrl]):
+    def renew_url(self, dsurls: Iterable[DSUrl]) -> Iterable[DSUrl]:
         events = []
         for dsurl in dsurls:
             channel_id = dsurl.channel_id
             message_id = dsurl.message_id
             event = UrlEvent()
             events.append(event)
-            # self.bot.dispatch("get_url", self.channel_id, message_id, event)  <- this is slow
-            asyncio.run_coroutine_threadsafe(self.bot.get_cog("RenewCog").on_get_url(channel_id, message_id, event), self.bot.loop)
+            self.bot.dispatch("get_url", channel_id, message_id, event)  # <- this is slow
+            # asyncio.run_coroutine_threadsafe(self.bot.get_cog("RenewCog").on_get_url(channel_id, message_id, event), self.bot.loop)
 
         return [event.get_url() for event in events]
     
@@ -102,16 +103,17 @@ class BotExpirePolicy(BaseExpirePolicy):
 def main():
     chanid = 1183629078323019841  # 1111111111111111111
     msgid = 1190682612184915980  # 1111111111111111111
+    dsurl = DSUrl.from_url("https://cdn.discordapp.com/attachments/1183629078323019841/1190645812074655845/e5dd5846279d1670a4c403487dbf2e51-6f4ee3d0?ex=65a28e52&is=65901952&hm=5b76264eec5173da6a840229947c961b4cf9e5b11815f1f09add59fed164b762&")
 
-    bottool = BotExpirePolicy(chanid)
+    bottool = BotExpirePolicy()
     bottool.run_bot_background(token=getpass.getpass("token: "))
     print("start")
     stime = time.time()
-    url = bottool.renew_url([msgid])
+    url = bottool.renew_url([dsurl])
     print("time:", time.time() - stime)
     print("start")
     stime = time.time()
-    url = bottool.renew_url([msgid] * 5)
+    url = bottool.renew_url([dsurl] * 5)
     print("time:", time.time() - stime)
     print(url)
     bottool.stop()
