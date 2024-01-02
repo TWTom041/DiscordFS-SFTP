@@ -53,6 +53,7 @@ class RenewCog(commands.Cog):
         print(message.attachments[0].url)
 
     
+# deprecated
 class BotExpirePolicy(BaseExpirePolicy):
     def __init__(self):
         self.bot = None
@@ -84,8 +85,8 @@ class BotExpirePolicy(BaseExpirePolicy):
             message_id = dsurl.message_id
             event = UrlEvent()
             events.append(event)
-            self.bot.dispatch("get_url", channel_id, message_id, event)  # <- this is slow
-            # asyncio.run_coroutine_threadsafe(self.bot.get_cog("RenewCog").on_get_url(channel_id, message_id, event), self.bot.loop)
+            # self.bot.dispatch("get_url", channel_id, message_id, event)  # <- this is slow
+            asyncio.run_coroutine_threadsafe(self.bot.get_cog("RenewCog").on_get_url(channel_id, message_id, event), self.bot.loop)
 
         return [event.get_url() for event in events]
     

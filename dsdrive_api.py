@@ -15,6 +15,7 @@ import fs.path
 
 from key_mgr import AESCipher
 from bot_expire import BotExpirePolicy
+from api_expire import ApiExpirePolicy
 from dsurl import DSUrl
 
 
@@ -350,7 +351,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
         set_info: Set the info of a file or directory
     """
 
-    def __init__(self, url, hook, url_expire_policy=BotExpirePolicy, key="despacito") -> None:
+    def __init__(self, url, hook, url_expire_policy=ApiExpirePolicy, token=None, key="despacito") -> None:
         """
         Create a DSdriveApi object, creates the root directory if it doesn't exist
 
@@ -363,7 +364,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
         self.hook: HookTool = hook
         self.key = key
         self.url_expire_policy = url_expire_policy()
-        self.url_expire_policy.setup()
+        self.url_expire_policy.setup(token)
         root = self.db["tree"].find_one({"name": "", "parent": None})
         if not root:
             root = self.db["tree"].insert_one(
@@ -538,7 +539,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
                     md5(chunk).hexdigest() + "-" + crc32(chunk).to_bytes(4, "big").hex()
                 )
                 resp = self.hook.send(files={"file": (fname, buffer)})
-                urls.append(DSUrl.from_url(resp.json()["attachments"][0]["url"]).save_format)
+                urls.append(DSUrl.from_url(resp.json()["attachments"][0]["url"], int(resp.json()["id"])).save_format)
                 chunk_sizes.append(len(chunk))
 
             chunk = file.read(chunk_size)
@@ -620,7 +621,9 @@ class DSdriveApiWebhook(DSdriveApiBase):
         if stat != 0:
             return None
         if fn:
-            urls = (DSUrl(*u).url for u in fn["urls"])
+            urls = (DSUrl(*u) for u in fn["urls"])
+            # update urls if expired
+            urls = self.url_expire_policy.renew_url(urls)
             # print(urls)
             return urls
         else:
