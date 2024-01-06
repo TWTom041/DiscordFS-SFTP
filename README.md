@@ -13,7 +13,7 @@ This project leverages Discord's free storage through webhooks and integrates wi
 - **Database Storage:** MongoDB integration through PyMongo for metadata and file management.
 - **Filesystem Operations:** Powered by pyfilesystem2 for seamlessly handling OS operations.
 - **CDN link renewal:** Automatically renew the link when the CDN link expires.
-- **File Encryption:** The file you uploaded to DiscordFS is protected by AES-256-CBC algorithm.
+- **File Encryption:** The file you uploaded to DiscordFS is protected by the AES-256-CBC algorithm.
 - **SFTP Server:** Ability to create a secure SFTP server for file transfer and management.
 
 ## Prerequisites
