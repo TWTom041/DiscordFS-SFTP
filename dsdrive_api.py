@@ -16,6 +16,7 @@ import fs.path
 from key_mgr import AESCipher
 from bot_expire import BotExpirePolicy
 from api_expire import ApiExpirePolicy
+from config_loader import Config
 from dsurl import DSUrl
 
 
@@ -950,10 +951,9 @@ class DSdriveApiWebhook(DSdriveApiBase):
 
 
 if __name__ == "__main__":
-    with open("webhooks.txt", "r") as file:
-        webhook_urls = [i for i in file.read().split("\n") if i]
+    configs = Config(webhooks_filename=".conf/webhooks.txt")
 
-    hook = HookTool(webhook_urls)
+    hook = HookTool(configs.webhooks)
     dsdrive_api = DSdriveApi("mongodb://localhost:27017/", hook)
 
     with dsdrive_api.open_binary("test/testfile.txt", "w") as file:

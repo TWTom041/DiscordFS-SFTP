@@ -8,8 +8,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-RUN cp /app/config4docker.yaml /app/config.yaml
-RUN touch /app/webhooks.txt /app/host_key
+RUN cp /app/.conf/config4docker.yaml /app/.conf/config.yaml
+RUN touch /app/.conf/webhooks.txt /app/.conf/host_key
 
 EXPOSE 8022
 

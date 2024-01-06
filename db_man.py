@@ -45,10 +45,10 @@ def dump(ctx, output_file, key, webhooks, encrypt):
     data = {}
     data["database"] = list(ctx.obj['collection'].find())
     if key:
-        with open("host_key", "rb") as file:
+        with open(".conf/host_key", "rb") as file:
             data["key"] = file.read()
     if webhooks:
-        with open("webhooks.txt", "rb") as file:
+        with open(".conf/webhooks.txt", "rb") as file:
             data["webhooks"] = file.read()
     bson_data = bson.BSON.encode(data)
     output_file.write(bson_data)

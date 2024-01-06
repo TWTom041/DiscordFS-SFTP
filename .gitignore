@@ -1,7 +1,8 @@
 /venv
 /venv-linux
 /__pycache__
-webhooks.txt
-host_key
-host_key.pub
+.conf/webhooks.txt
+.conf/host_key
+.conf/host_key.pub
 test.py
+.env

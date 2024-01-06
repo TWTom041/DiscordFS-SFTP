@@ -38,8 +38,8 @@ Ensure you have the following installed:
 
 ## Configuration
 
-- SFTP connection details can be configured in `config.yaml`.
-- You should create a file called webhooks.txt with your webhooks, one webhook per line.
+- SFTP connection details can be configured in `.conf/config.yaml`.
+- You should create a file called `.conf/webhooks.txt` with your webhooks, one webhook per line.
 - You can use the bot we created [link](https://discord.com/api/oauth2/authorize?client_id=1186899111643987990&permissions=536872960&scope=bot) or **host the bot**.
 
 #### Host the Bot
@@ -76,8 +76,8 @@ pip install -r requirements-bot.txt
 
 1. Docker Compose setup:
     
-    Bind your `webhooks.txt` to `/app/webhooks.yaml` or it won't work.
-    You may also bind your `config.yaml` to `/app/config.yaml`, if no config is provided, you'll use the default config, which isn't quite safe. If you want to use your host key, bind it to `/app/host_key`.
+    Bind your `webhooks.txt` to `/app/.conf/webhooks.txt` or it won't work.
+    You may also bind your `config.yaml` to `/app/.conf/config.yaml`, if no config is provided, you'll use the default config, which isn't quite safe. If you want to use your host key, bind it to `/app/.conf/host_key`.
     ```yaml
     services:
         dsfs:
@@ -85,9 +85,9 @@ pip install -r requirements-bot.txt
             ports:
                 - "8022:8022"  # change it if you need to.
             volumes:
-                - "/path/to/config.yaml:/app/config.yaml"
-                - "/path/to/webhooks.txt:/app/webhooks.txt"
-                - "/path/to/host_key:/app/host_key"
+                - "/path/to/config.yaml:/app/.conf/config.yaml"
+                - "/path/to/webhooks.txt:/app/.conf/webhooks.txt"
+                - "/path/to/host_key:/app/.conf/host_key"
         ...
     ```
 2. Run Docker compose
@@ -99,7 +99,7 @@ pip install -r requirements-bot.txt
 
 ## Example
 
-If you're using the default config.yaml, and you want to log into shrek's account, you should do this:
+If you're using the default `config.yaml`, and you want to log into shrek's account, you should do this:
 ```bash
 sftp -P 8022 shrek@127.0.0.1
 ```
@@ -121,7 +121,7 @@ First, I created `dsdrive_api.py`, this file is meant to create an interface to 
 
 Then `discord_fs.py` is created. It creates a **FS** subclass that can communicate with **DSdriveApi**, named **DiscordFS**.
 
-`expose_sftp.py` is adapted from [PyFilesystem](https://github.com/PyFilesystem/pyfilesystem/blob/master/fs/expose/sftp.py) and makes it support PyFilesystem2. You should edit `config.yaml` to have detailed settings of the SFTP server.
+`expose_sftp.py` is adapted from [PyFilesystem](https://github.com/PyFilesystem/pyfilesystem/blob/master/fs/expose/sftp.py) and makes it support PyFilesystem2. You should edit `.conf/config.yaml` to have detailed settings of the SFTP server.
 
 ## Contribution
 Feel free to contribute by opening issues or submitting pull requests.

@@ -52,32 +52,13 @@ from fs.errors import *
 
 from discord_fs import DiscordFS
 from dsdrive_api import DSdriveApi, HookTool
+from config_loader import Config
 
-
-
-HOST = "127.0.0.1"
-PORT = 8022
-auths = []
-
-
-with open("webhooks.txt", "r") as file:
-    _webhook_urls = [i for i in file.read().split("\n") if i]
-    if not _webhook_urls:
-        # no webhooks found
-        raise Exception("No webhooks found in webhooks.txt")
-    _hook = HookTool(_webhook_urls)
 
 FSFactory = DiscordFS  # can be replaced with whatever FS class
 
 
 # Default host key used by BaseSFTPServer
-
-try:
-    HOST_KEY = paramiko.RSAKey.from_private_key_file("host_key")
-except:
-    HOST_KEY = paramiko.RSAKey.generate(2048)
-    HOST_KEY.write_private_key_file("host_key")
-    # HOST_KEY.write_public_key_file("host_key.pub")
 
 
 def flags_to_mode(flags, binary=True):
@@ -463,10 +444,6 @@ class BaseSFTPServer(ThreadedTCPServer):
 
         server = BaseSFTPServer((hostname,port),fs)
         server.serve_forever()
-
-    It is also possible to specify the host key used by the sever by setting
-    the 'host_key' attribute.  If this is not specified, it will default to
-    the key found in the DEFAULT_HOST_KEY variable.
     """
     # If the server stops/starts quickly, don't fail because of
     # "port in use" error.
@@ -477,8 +454,6 @@ class BaseSFTPServer(ThreadedTCPServer):
         self.encoding = encoding
         self.auths = auths if auths is not None else []
         self.noauth = noauth
-        if host_key is None:
-            host_key = HOST_KEY
         self.host_key = host_key
         if RequestHandlerClass is None:
             RequestHandlerClass = SFTPRequestHandler
@@ -573,39 +548,32 @@ class BaseServerInterface(paramiko.ServerInterface):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    with open("config.yaml", "r") as file:
-        _config = yaml.load(file.read(), Loader=yaml.FullLoader)
-        _sftp_config = _config.get("SFTP", {})
-        HOST = _sftp_config.get("Host", "127.0.0.1")
-        PORT = _sftp_config.get("Port", 8022)
-        auths = _sftp_config.get("Auths", [{"Username": "anonymous", "Password": "susman"}])
-        noauth = _sftp_config.get("NoAuth", False)
-
-        mongodb_config = _config.get("MongoDB", {})
-        prefix = mongodb_config.get("Prefix", "mongodb+srv://")
-        host = mongodb_config.get("Host", "127.0.0.1")
-        port = mongodb_config.get("Port", "27017")
-        mgdb_url = f"{prefix}{host}:{port}"
+    if not os.path.exists(".conf/host_key"):
+        _host_key = paramiko.RSAKey.generate(2048)
+        _host_key.write_private_key_file(".conf/host_key")
     
-    parser.add_argument("-m", "--mongo-url", type=str, default=mgdb_url, 
+    configs = Config(config_filename=".conf/config.yaml", host_key_filename=".conf/host_key", webhooks_filename=".conf/webhooks.txt")
+    _hook = HookTool(configs.webhooks)
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-m", "--mongo-url", type=str, default=configs.mgdb_url, 
                         help="set mongodb url")
-    parser.add_argument("-H", "--host", type=str, default=HOST,
+    parser.add_argument("-H", "--host", type=str, default=configs.sftp_host,
                         help="set sftp host")
-    parser.add_argument("-P", "--port", type=int, default=PORT,
+    parser.add_argument("-P", "--port", type=int, default=configs.sftp_port,
                         help="set sftp port")
     
     args = parser.parse_args()
     mgdb_url = args.mongo_url
-    HOST = args.host
-    PORT = args.port
+    sftp_host = args.host
+    sftp_port = args.port
     
     dsdriveapi = DSdriveApi(mgdb_url, _hook)
     dsfs = FSFactory(dsdrive_api=dsdriveapi)  # can be replaced with whatever FS class
-    server = BaseSFTPServer((HOST, PORT), fs=dsfs, auths=auths, noauth=noauth)
+    server = BaseSFTPServer((sftp_host, sftp_port), fs=dsfs, host_key=configs.sftp_host_key, auths=configs.sftp_auths, noauth=configs.sftp_noauth)
     try:
         #import rpdb2; rpdb2.start_embedded_debugger('password')
-        print("Serving SFTP on %s:%d" % (HOST, PORT))
+        print("Serving SFTP on %s:%d" % (sftp_host, sftp_port))
         server.serve_forever()
     except (SystemExit, KeyboardInterrupt):
         server.server_close()

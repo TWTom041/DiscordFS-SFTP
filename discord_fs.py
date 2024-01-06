@@ -1,14 +1,19 @@
-from typing import Text
-import fs
-import yaml
-from dsdrive_api import DSdriveApi, HookTool
+from typing import Text, Optional, Collection, Any, BinaryIO
 import os
+import string
+import sys
+
+import fs
 import fs.base
 import fs.errors
 import fs.info
 import fs.subfs
-import string
-import sys
+import fs.permissions
+import yaml
+
+from dsdrive_api import DSdriveApi, HookTool
+from config_loader import Config
+
 sys.setrecursionlimit(1200)
 
 class DiscordFS(fs.base.FS):
@@ -21,7 +26,7 @@ class DiscordFS(fs.base.FS):
         return DiscordFS(self.dsdrive_api)
 
     def getinfo(self, path, namespaces=None):
-        # type: (Text, Optional[Collection[Text]]) -> Info
+        # type: (Text, Optional[Collection[Text]]) -> fs.info.Info
         """Get information about a resource on a filesystem.
 
         Arguments:
@@ -77,10 +82,10 @@ class DiscordFS(fs.base.FS):
     def makedir(
         self,
         path,  # type: Text
-        permissions=None,  # type: Optional[Permissions]
+        permissions=None,  # type: Optional[fs.permissions.Permissions]
         recreate=False,  # type: bool
     ):
-        # type: (...) -> SubFS[FS]
+        # type: (...) -> fs.subfs.SubFS[fs.FS]
         """Make a directory.
 
         Arguments:
@@ -282,7 +287,7 @@ class DiscordFS(fs.base.FS):
             raise fs.errors.RemoveRootError(path)
 
     def setinfo(self, path, info):
-        # type: (Text, RawInfo) -> None
+        # type: (Text, fs.info.RawInfo) -> None
         """Set info on a resource.
 
         This method is the complement to `~fs.base.FS.getinfo`
@@ -320,19 +325,9 @@ class DiscordFS(fs.base.FS):
 
 if __name__ == "__main__":
     fulltest = True
-    with open("webhooks.txt", "r") as file:
-        webhook_urls = [i for i in file.read().split("\n") if i]
+    configs = Config(config_filename=".conf/config.yaml", host_key_filename=".conf/host_key", webhooks_filename=".conf/webhooks.txt")
 
-    hook = HookTool(webhook_urls)
-
-    with open("config.yaml", "r") as file:
-        _config = yaml.load(file.read(), Loader=yaml.FullLoader)
-        mongodb_config = _config.get("MongoDB", {})
-        prefix = mongodb_config.get("Prefix", "mongodb://")
-        host = mongodb_config.get("Host", "127.0.0.1")
-        port = mongodb_config.get("Port", "27017")
-
-    dsdriveapi = DSdriveApi(f"{prefix}{host}:{port}", hook)
+    dsdriveapi = DSdriveApi(configs.mgdb_url, configs.webhooks)
 
     # discord_fs = DiscordFS()
     # discord_fs.dsdrive_api = dsdriveapi
