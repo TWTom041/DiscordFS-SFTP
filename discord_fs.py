@@ -325,10 +325,10 @@ class DiscordFS(fs.base.FS):
 
 if __name__ == "__main__":
     fulltest = True
-    configs = Config(config_filename=".conf/config.yaml", host_key_filename=".conf/host_key", webhooks_filename=".conf/webhooks.txt")
+    configs = Config(config_filename=".conf/config.yaml", host_key_filename=".conf/host_key", webhooks_filename=".conf/webhooks.txt", bot_token_filename=".conf/bot_token")
     hooks = HookTool(configs.webhooks)
 
-    dsdriveapi = DSdriveApi(configs.mgdb_url, hooks, token=input("Token: "))
+    dsdriveapi = DSdriveApi(configs.mgdb_url, hooks, token=configs.bot_token)
 
     # discord_fs = DiscordFS()
     # discord_fs.dsdrive_api = dsdriveapi

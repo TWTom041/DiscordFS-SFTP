@@ -4,3 +4,4 @@ __pycache__/
 .conf/webhooks.txt
 .conf/host_key
 .conf/host_key.pub
+.conf/bot_token

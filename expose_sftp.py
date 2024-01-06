@@ -552,7 +552,7 @@ if __name__ == "__main__":
         _host_key = paramiko.RSAKey.generate(2048)
         _host_key.write_private_key_file(".conf/host_key")
     
-    configs = Config(config_filename=".conf/config.yaml", host_key_filename=".conf/host_key", webhooks_filename=".conf/webhooks.txt")
+    configs = Config(config_filename=".conf/config.yaml", host_key_filename=".conf/host_key", webhooks_filename=".conf/webhooks.txt", bot_token_filename=".conf/bot_token")
     _hook = HookTool(configs.webhooks)
     
     parser = argparse.ArgumentParser()
@@ -568,7 +568,7 @@ if __name__ == "__main__":
     sftp_host = args.host
     sftp_port = args.port
     
-    dsdriveapi = DSdriveApi(mgdb_url, _hook, token=input("Token: "))
+    dsdriveapi = DSdriveApi(mgdb_url, _hook, token=configs.bot_token)
     dsfs = FSFactory(dsdrive_api=dsdriveapi)  # can be replaced with whatever FS class
     server = BaseSFTPServer((sftp_host, sftp_port), fs=dsfs, host_key=configs.sftp_host_key, auths=configs.sftp_auths, noauth=configs.sftp_noauth)
     try:

@@ -5,7 +5,7 @@ from zlib import crc32
 import time
 import base64
 import hashlib
-from typing import Union
+from typing import Union, Optional, Iterable
 from urllib.parse import urlparse
 
 import requests
@@ -17,10 +17,10 @@ from key_mgr import AESCipher
 from bot_expire import BotExpirePolicy
 from api_expire import ApiExpirePolicy
 from config_loader import Config
-from dsurl import DSUrl
+from dsurl import DSUrl, BaseExpirePolicy
 
 
-chunk_size = 24 * 1024 * 1024  # MB
+_CHUNK_SIZE = 24 * 1024 * 1024  # MB
 
 
 class HookTool:
@@ -257,10 +257,11 @@ class DSdriveApi:
 
 
 class DSdriveApiBase:
+    """A base class for DSdrive API implementations"""
     def __init__(self) -> None:
         pass
 
-    def encrypt(self, data):
+    def encrypt(self, data: bytes):
         """
         Encrypt data
 
@@ -269,12 +270,12 @@ class DSdriveApiBase:
             encryption_func (function): The encryption function to use
 
         Returns:
-            bytes: The encrypted data
+            encrypted (bytes): The encrypted data
         """
         crypto = AESCipher(self.key)
         return crypto.encrypt(data)
 
-    def decrypt(self, data):
+    def decrypt(self, data: bytes):
         """
         Decrypt data
 
@@ -283,12 +284,12 @@ class DSdriveApiBase:
             encryption_func (function): The decryption function to use
 
         Returns:
-            bytes: The decrypted data
+            decrypted (bytes): The decrypted data
         """
         crypto = AESCipher(self.key)
         return crypto.decrypt(data)
 
-    def path_splitter(self, path):
+    def path_splitter(self, path: str):
         """
         Split a path into a list
 
@@ -296,13 +297,13 @@ class DSdriveApiBase:
             path (str): The path to split
 
         Returns:
-            list: The list of directories
+            filelist (list): The list of directories
         """
         paths = fs.path.relpath(fs.path.normpath(path)).split("/")
         paths = list(filter(None, paths))
         return paths
 
-    def open_binary(self, path, mode):
+    def open_binary(self, path: str, mode: str= "r"):
         """
         Open a file
 
@@ -311,7 +312,7 @@ class DSdriveApiBase:
             mode (str): The mode of the file
 
         Returns:
-            DSFile: The file-like object
+            IO (DSFile): The file-like object
         """
         # check if the file size is 0
         stat, fn = self.find(self.path_splitter(path), return_obj=True)
@@ -336,7 +337,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
         root_id (bson.objectid.ObjectId): The ID of the root directory
 
     Methods:
-        clear: Clear the database
+        clear: Clear the database, very dangerous
         path_splitter: Split a path into a list of directories
         makedirs: Create directories
         find: Find a path
@@ -352,7 +353,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
         set_info: Set the info of a file or directory
     """
 
-    def __init__(self, url, hook, url_expire_policy=ApiExpirePolicy, token=None, key="despacito") -> None:
+    def __init__(self, url: str, hook: HookTool, url_expire_policy: BaseExpirePolicy=ApiExpirePolicy, token: Optional[str]=None, key: Union[str, bytes]="despacito") -> None:
         """
         Create a DSdriveApi object, creates the root directory if it doesn't exist
 
@@ -412,7 +413,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
         self.db["tree"].drop()
         self.db["tree"].insert_one(root)
 
-    def makedirs(self, paths, allow_many=False, exist_ok=False):
+    def makedirs(self, paths: list, allow_many: bool=False, exist_ok: bool=False):
         """
         Create directories
 
@@ -422,7 +423,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
             exist_ok (bool): Whether to allow creating directories that already exist
 
         Returns:
-            error_code (int): An error code, or 0 if successful
+            code (int): An error code, or 0 if successful
             parent_id (Union[ObjectID, None]): The ID of the last directory created
         """
         parent_id = self.root_id
@@ -474,17 +475,17 @@ class DSdriveApiWebhook(DSdriveApiBase):
             return 2, None  # No directories created, already exists
         return 0, parent_id
 
-    def find(self, paths, return_obj=False):
+    def find(self, paths: str, return_obj: bool=False):
         """
         Find a path
 
         Args:
             paths (list): The list of directories to find
-            return_obj (bool): Whether to return the object found
+            return_obj (bool): Whether to return the object found or the ID of the object found
 
         Returns:
-            error_code (int): An error code, or 0 if successful
-            parent_id (Union[ObjectID, None]): The ID of the last directory found
+            code (int): An error code, or 0 if successful
+            found_id (Union[ObjectID, None]): The ID of the last position found
         """
         # paths = os.path.normpath(path).split(os.sep)
         parent_id = self.root_id
@@ -504,7 +505,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
             return 0, fs
         return 0, parent_id
 
-    def send_file(self, path, file_obj=None):
+    def send_file(self, path: str, file_obj: Union[str, BytesIO, DSFile, None]=None):
         """
         Send a file to Didcord
 
@@ -526,7 +527,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
             else:
                 raise TypeError("file_obj must be a BytesIO or str")
 
-        chunk = file.read(chunk_size)
+        chunk = file.read(_CHUNK_SIZE)
 
         paths = self.path_splitter(path)
         _, parent_id = self.makedirs(paths[:-1], allow_many=True, exist_ok=True)
@@ -543,7 +544,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
                 urls.append(DSUrl.from_url(resp.json()["attachments"][0]["url"], int(resp.json()["id"])).save_format)
                 chunk_sizes.append(len(chunk))
 
-            chunk = file.read(chunk_size)
+            chunk = file.read(_CHUNK_SIZE)
 
         try:
             # dirname = os.path.dirname(path)
@@ -606,7 +607,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
         if file_obj is None:
             file.close()
 
-    def get_file_urls(self, path):
+    def get_file_urls(self, path: str):
         """
         Get the URLs of a file
 
@@ -614,7 +615,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
             path (str): The path of the file
 
         Returns:
-            list: The list of URLs of the file
+            filelist (list): The list of URLs of the file
         """
         paths = self.path_splitter(path)
 
@@ -630,7 +631,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
         else:
             return None
 
-    def download_file(self, path_src, path_dst=None):
+    def download_file(self, path_src: str, path_dst: Optional[str]=None):
         """
         Download a file from Discord to the local filesystem
 
@@ -657,7 +658,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
                 chunk = self.decrypt(resp.content)
                 path_dst.write(chunk)
 
-    def list_dir(self, path):
+    def list_dir(self, path: str):
         """
         List a directory
 
@@ -665,8 +666,8 @@ class DSdriveApiWebhook(DSdriveApiBase):
             path (str): The path of the directory
 
         Returns:
-            error_code (int): an error code, or 0 if successful
-            Union[iterable, None]: A list of files and directories, or None if an error occured
+            code (int): an error code, or 0 if successful
+            filelist (Union[Iterable, None]): A list of files and directories, or None if an error occured
         """
         paths = self.path_splitter(path)
         if paths == []:  # Root directory
@@ -680,7 +681,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
         fn = self.db["tree"].find({"parent": parent["_id"]})
         return 0, fn
 
-    def remove_file(self, path):
+    def remove_file(self, path: str):
         """
         Remove a file
 
@@ -688,7 +689,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
             path (str): The path of the file
 
         Returns:
-            int: An error code, or 0 if successful
+            code (int): An error code, or 0 if successful
         """
         paths = self.path_splitter(path)
         stat, fn = self.find(paths, return_obj=True)
@@ -699,7 +700,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
         self.db["tree"].delete_one({"_id": fn["_id"]})
         return 0
 
-    def remove_dir(self, path):
+    def remove_dir(self, path: str):
         """
         Remove a directory
 
@@ -707,7 +708,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
             path (str): The path of the directory
 
         Returns:
-            int: An error code, or 0 if successful
+            code (int): An error code, or 0 if successful
         """
         paths = self.path_splitter(path)
         if len(paths) == 0:
@@ -725,7 +726,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
             return 3  # Folder not empty
         self.db["tree"].delete_one({"_id": fn["_id"]})
 
-    def remove_tree(self, path):
+    def remove_tree(self, path: str):
         """
         Remove a tree, not implemented yet
 
@@ -733,7 +734,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
             path (str): The path of the tree
 
         Returns:
-            int: An error code, or 0 if successful
+            code (int): An error code, or 0 if successful
         """
         paths = self.path_splitter(path)
         if len(paths) == 0:
@@ -745,11 +746,11 @@ class DSdriveApiWebhook(DSdriveApiBase):
 
     def rename(
         self,
-        path_src,
-        path_dst,
-        overwrite=False,
-        create_dirs=False,
-        preserve_timestamps=False,
+        path_src: str,
+        path_dst: str,
+        overwrite: bool=False,
+        create_dirs: bool=False,
+        preserve_timestamps: bool=False,
     ):
         """
         Rename a file or directory
@@ -759,7 +760,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
             path_dst (str): The new path of the file or directory
 
         Returns:
-            int: An error code, or 0 if successful
+            code (int): An error code, or 0 if successful
         """
         paths_src = self.path_splitter(path_src)
         paths_dst = self.path_splitter(path_dst)
@@ -804,11 +805,11 @@ class DSdriveApiWebhook(DSdriveApiBase):
 
     def copy(
         self,
-        path_src,
-        path_dst,
-        overwrite=False,
-        create_dirs=False,
-        preserve_timestamps=False,
+        path_src: str,
+        path_dst: str,
+        overwrite: bool=False,
+        create_dirs: bool=False,
+        preserve_timestamps: bool=False,
     ):
         """
         Copy a file or directory
@@ -818,7 +819,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
             path_dst (str): The new path of the file or directory
 
         Returns:
-            int: An error code, or 0 if successful
+            code (int): An error code, or 0 if successful
         """
         paths_src = self.path_splitter(path_src)
         paths_dst = self.path_splitter(path_dst)
@@ -868,7 +869,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
             )
         return 0
 
-    def get_info(self, path):
+    def get_info(self, path: str):
         """
         Get the info of a file or directory
 
@@ -876,8 +877,8 @@ class DSdriveApiWebhook(DSdriveApiBase):
             path (str): The path of the file or directory
 
         Returns:
-            int: An error code, or 0 if successful
-            dict: The info of the file or directory
+            code (int): An error code, or 0 if successful
+            info (dict): The info of the file or directory
         """
         paths = self.path_splitter(path)
         if paths == []:  # Root directory
@@ -901,7 +902,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
         }
         return 0, raw_info
 
-    def _set_info_by_fn(self, fn, info):
+    def _set_info_by_fn(self, fn, info: dict):
         out_info = {}
         if "access" in info:
             out_info["access"] = {**fn["access"], **info["access"]}
@@ -923,16 +924,16 @@ class DSdriveApiWebhook(DSdriveApiBase):
         self.db["tree"].update_one({"_id": fn["_id"]}, {"$set": out_info})
         return 0
 
-    def set_info(self, path, info):
+    def set_info(self, path: str, info: dict):
         """
         Set the info of a file or directory
 
         Args:
             path (str): The path of the file or directory
-            info (dict): The info to set
+            info (dict): The info you want to set
 
         Returns:
-            int: An error code, or 0 if successful
+            code (int): An error code, or 0 if successful
         """
 
         paths = self.path_splitter(path)
@@ -951,7 +952,7 @@ class DSdriveApiWebhook(DSdriveApiBase):
 
 
 if __name__ == "__main__":
-    configs = Config(webhooks_filename=".conf/webhooks.txt")
+    configs = Config(webhooks_filename=".conf/webhooks.txt", bot_token_filename=".conf/bot_token")
 
     hook = HookTool(configs.webhooks)
     dsdrive_api = DSdriveApi("mongodb://localhost:27017/", hook, token=input("Token: "))

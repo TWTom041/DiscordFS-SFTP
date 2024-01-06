@@ -25,7 +25,7 @@ class WebhookApiMan:
         for _ in range(amount):
             resp = requests.post(url, json=body, headers=self.headers)
             if resp.status_code != 200:
-                raise Exception(f"Status code {resp.status_code}. Note: If you are using a bot token, make sure it has the 'MANAGE_WEBHOOKS' permission, or it'll return 400 error.")
+                raise Exception(f"Status code {resp.status_code}. Note: If you are using a bot token, make sure it has the 'MANAGE_WEBHOOKS' permission, or it'll return 401 error.")
             context = resp.json()
             yield context["id"], context["token"]
     
@@ -40,13 +40,13 @@ class WebhookApiMan:
             
             resp = requests.delete(url, headers=self.headers)
             if resp.status_code != 204:
-                raise Exception(f"Status code {resp.status_code}. Note: If you are using a bot token, make sure it has the 'MANAGE_WEBHOOKS' permission, or it'll return 400 error. Another choice is to provide webhook token.")
+                raise Exception(f"Status code {resp.status_code}. Note: If you are using a bot token, make sure it has the 'MANAGE_WEBHOOKS' permission, or it'll return 401 error. Another choice is to provide webhook token.")
     
     def list_webhooks_in_channel(self, channel_id: Union[int, str]):
         url = f"https://discord.com/api/channels/{channel_id}/webhooks"
         resp = requests.get(url, headers=self.headers)
         if resp.status_code != 200:
-            raise Exception(f"Status code {resp.status_code}. Note: If you are using a bot token, make sure it has the 'MANAGE_WEBHOOKS' permission, or it'll return 400 error.")
+            raise Exception(f"Status code {resp.status_code}. Note: If you are using a bot token, make sure it has the 'MANAGE_WEBHOOKS' permission, or it'll return 401 error.")
         return resp.json()
     
     def delete_webhooks_in_channel(self, channel_id: Union[int, str]):

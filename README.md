@@ -11,7 +11,8 @@ This project leverages Discord's free storage through webhooks and integrates wi
 
 - **Discord Integration:** Utilizes Discord webhooks for free storage and communication.
 - **Database Storage:** MongoDB integration through PyMongo for metadata and file management.
-- **Filesystem Operations:** Powered by pyfilesystem2 for handling OS operations in a seamless manner.
+- **Filesystem Operations:** Powered by pyfilesystem2 for seamlessly handling OS operations.
+- **CDN link renewal:** Automatically renew the link when the CDN link expires.
 - **SFTP Server:** Ability to create a secure SFTP server for file transfer and management.
 
 ## Prerequisites
@@ -40,19 +41,20 @@ Ensure you have the following installed:
 
 - SFTP connection details can be configured in `.conf/config.yaml`.
 - You should create a file called `.conf/webhooks.txt` with your webhooks, one webhook per line.
-- You can use the bot we created [link](https://discord.com/api/oauth2/authorize?client_id=1186899111643987990&permissions=536872960&scope=bot) or **host the bot**.
+- You should create a file called `.conf/bot_token`, which only contains the bot token. Make sure the bot has `MANAGE_WEBHOOKS`, `SEND_MESSAGES` and `READ_MESSAGE_HISTORY` permission.
+- *Optional* - You can use the webhook generation bot we created [link](https://discord.com/api/oauth2/authorize?client_id=1186899111643987990&permissions=536872960&scope=bot). Or you can **host the bot yourself**.
+- *Optional* - You can also just run `webhook_man_api.py` to interact with discord API and create multiple webhooks swiftly.
+
+> [!Note] 
+> Providing bot_token is not just for creating a lot of webhooks at a time, it's also used when renewing the attachment's CDN URL.
 
 #### Host the Bot
 
-- create `.env` file and insert your bot token:
-```.env
-TOKEN=your_bot_token
-```
 - install dependencies:
 ```bash
 pip install -r requirements-bot.txt
 ```
-- run `bot.py`
+- run `webhook_man_bot.py`
 
 #### Bot Commands
 
@@ -88,6 +90,7 @@ pip install -r requirements-bot.txt
                 - "/path/to/config.yaml:/app/.conf/config.yaml"
                 - "/path/to/webhooks.txt:/app/.conf/webhooks.txt"
                 - "/path/to/host_key:/app/.conf/host_key"
+                - "/path/to/bot_token:/app/.conf/bot_token"
         ...
     ```
 2. Run Docker compose
