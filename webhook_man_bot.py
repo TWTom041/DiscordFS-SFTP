@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 import faker
-import dotenv
+from config_loader import Config
 
 """
 add a file named .env in the same directory as this file
@@ -13,7 +13,7 @@ BOT USAGE:
     _rem          - Removes all webhooks in the current channel
 """
 
-TOKEN = dotenv.get_key('.env', 'TOKEN')
+TOKEN = Config(bot_token_filename=".conf/bot_token").bot_token
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='_', intents=intents)

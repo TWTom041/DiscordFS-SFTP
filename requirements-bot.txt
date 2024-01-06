@@ -1,3 +1,2 @@
 faker
 discord
-python-dotenv
