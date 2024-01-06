@@ -6,3 +6,4 @@ pyyaml
 pycryptodome
 faker
 click
+aiohttp

@@ -14,7 +14,6 @@ import pymongo
 import fs.path
 
 from key_mgr import AESCipher
-from bot_expire import BotExpirePolicy
 from api_expire import ApiExpirePolicy
 from config_loader import Config
 from dsurl import DSUrl, BaseExpirePolicy
