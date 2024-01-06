@@ -568,7 +568,7 @@ if __name__ == "__main__":
     sftp_host = args.host
     sftp_port = args.port
     
-    dsdriveapi = DSdriveApi(mgdb_url, _hook)
+    dsdriveapi = DSdriveApi(mgdb_url, _hook, token=input("Token: "))
     dsfs = FSFactory(dsdrive_api=dsdriveapi)  # can be replaced with whatever FS class
     server = BaseSFTPServer((sftp_host, sftp_port), fs=dsfs, host_key=configs.sftp_host_key, auths=configs.sftp_auths, noauth=configs.sftp_noauth)
     try:
@@ -578,6 +578,7 @@ if __name__ == "__main__":
     except (SystemExit, KeyboardInterrupt):
         server.server_close()
     except:
+        print("Caught unexpected exception, shutting down.")
         print(traceback.format_exc())
         server.server_close()
 

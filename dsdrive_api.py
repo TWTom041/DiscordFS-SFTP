@@ -954,7 +954,7 @@ if __name__ == "__main__":
     configs = Config(webhooks_filename=".conf/webhooks.txt")
 
     hook = HookTool(configs.webhooks)
-    dsdrive_api = DSdriveApi("mongodb://localhost:27017/", hook)
+    dsdrive_api = DSdriveApi("mongodb://localhost:27017/", hook, token=input("Token: "))
 
     with dsdrive_api.open_binary("test/testfile.txt", "w") as file:
         file.write(b"hello world")

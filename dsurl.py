@@ -61,6 +61,12 @@ class DSUrl:
             raise ValueError("Filename is not set")
         return f"https://cdn.discordapp.com/attachments/{self.channel_id}/{self.attachment_id}/{self.filename.decode()}"
     
+    @property
+    def full_url(self):
+        if self.filename is None or self.expire is None or self.issue is None or self.signature is None:
+            raise ValueError(f"Required attribute is not set: filename={self.filename}, expire={self.expire}, issue={self.issue}, signature={self.signature}")
+        return f"https://cdn.discordapp.com/attachments/{self.channel_id}/{self.message_id}/{self.attachment_id}/{self.filename.decode()}?ex={self.expire:x}&is={self.issue:x}&hm={self.signature.hex()}"
+    
     def __str__(self) -> str:
         return self.url
     
