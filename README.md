@@ -120,9 +120,9 @@ But if you want to log into purepubkeyuser, password is not allowed.
 Logging into uselessuser is impossible because neither Password nor PubKey is not provided.
 
 ## Implementation
-First, I created `dsdrive_api.py`, this file is meant to create an interface to communicate with Discord. Specifically, there are 3 classes, named **HookTool**, **DSFile**, **DSdriveApi**.
+`dsdrive_api.py` is meant to create an interface to communicate with Discord.
 
-Then `discord_fs.py` is created. It creates a **FS** subclass that can communicate with **DSdriveApi**, named **DiscordFS**.
+`discord_fs.py` defined an **FS** subclass that can communicate with **DSdriveApi**, named **DiscordFS**.
 
 `expose_sftp.py` is adapted from [PyFilesystem](https://github.com/PyFilesystem/pyfilesystem/blob/master/fs/expose/sftp.py) and makes it support PyFilesystem2. You should edit `.conf/config.yaml` to have detailed settings of the SFTP server.
 
