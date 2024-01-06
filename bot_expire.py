@@ -1,5 +1,5 @@
 """
-Not implemented yet
+Not implemented yet, seems much slower than api_expire.py
 """
 
 import os
