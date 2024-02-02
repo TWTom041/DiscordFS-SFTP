@@ -3,6 +3,9 @@ DiscordFS-SFTP
 
 Utilizing Discord's free storage to create a filesystem with SFTP server capabilities.
 
+## Foreword and Disclaimer
+This project is only a fun/educational project, you should not use this. If you want a reliable data storage service, this won't meet your need.
+
 ## Overview
 
 This project leverages Discord's free storage through webhooks and integrates with PyMongo and PyFilesystem2 to create a filesystem. Additionally, it provides the capability to create a secure SFTP server for file operations.
